@@ -14,6 +14,7 @@ import { SeoSchemaInspector } from './components/SeoSchemaInspector';
 import { Footer } from './components/Footer';
 import { ToastContainer } from './components/ToastContainer';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { UpdateNotification } from './components/UpdateNotification';
 
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
@@ -306,7 +307,8 @@ export default function App() {
         lang={lang}
       />
 
-      {/* PWA Floating Banner & Toast System */}
+      {/* PWA Floating Banner, Update Notification & Toast System */}
+      <UpdateNotification />
       <PwaInstallPrompt lang={lang} />
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
     </div>

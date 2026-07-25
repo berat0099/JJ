@@ -8,6 +8,14 @@ import { createServer as createViteServer } from 'vite';
 
 const execFileAsync = promisify(execFile);
 
+function getYtDlpPath(): string {
+  const binPath = path.join(process.cwd(), 'bin', 'yt-dlp');
+  if (fs.existsSync(binPath)) {
+    return binPath;
+  }
+  return 'yt-dlp';
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -29,7 +37,7 @@ async function startServer() {
 
       // Try running yt-dlp first
       try {
-        const { stdout } = await execFileAsync('yt-dlp', [
+        const { stdout } = await execFileAsync(getYtDlpPath(), [
           '--dump-single-json',
           '--no-warnings',
           '--no-playlist',
@@ -198,16 +206,16 @@ async function startServer() {
     try {
       let formatSelector = '';
       if (type === 'audio') {
-        formatSelector = formatId && formatId !== 'undefined' ? `${formatId}/ba/bestaudio` : 'ba/bestaudio/best';
+        formatSelector = formatId && formatId !== 'undefined' ? `${formatId}/ba/bestaudio/best` : 'ba/bestaudio/best';
       } else {
         if (formatId && formatId !== 'undefined' && formatId !== 'best') {
-          // Merge chosen video format with best available audio stream
-          formatSelector = `${formatId}+ba/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best`;
+          formatSelector = `${formatId}+ba/bestvideo[ext=mp4]+bestaudio[ext=m4a]/b/best[ext=mp4]/best`;
         } else {
-          formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+          formatSelector = 'b/best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
         }
       }
 
+      const ytBin = getYtDlpPath();
       const args = [
         '-N', '8',
         '--no-playlist',
@@ -220,13 +228,13 @@ async function startServer() {
       if (type === 'audio') {
         args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
       } else {
-        args.push('--recode-video', 'mp4', '--merge-output-format', 'mp4');
+        args.push('--merge-output-format', 'mp4');
       }
 
       args.push(String(url));
 
       // Execute yt-dlp to download and convert on disk
-      await execFileAsync('yt-dlp', args, { timeout: 120000 });
+      await execFileAsync(ytBin, args, { timeout: 120000 });
 
       // Check if output file exists or if yt-dlp modified extension
       let finalFilePath = outputPath;
@@ -235,9 +243,14 @@ async function startServer() {
         if (matchingFiles.length > 0) {
           finalFilePath = path.join(tmpDir, matchingFiles[0]);
         } else {
+          res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
           return res.status(500).send('Medya indirilemedi, lütfen tekrar deneyin.');
         }
       }
+
+      res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
 
       res.download(finalFilePath, filename, (err) => {
         try {
@@ -256,7 +269,21 @@ async function startServer() {
         }
       } catch (e) {}
 
-      res.status(500).send('İndirme ve medya işleme hatası oluştu. Lütfen bağlantıyı kontrol edip tekrar deneyin.');
+      // Fallback: If local file download failed, stream directly with yt-dlp stdout pipe
+      try {
+        const ytBin = getYtDlpPath();
+        const fallbackArgs = type === 'audio'
+          ? ['-f', 'ba/bestaudio/best', '-x', '--audio-format', 'mp3', '-o', '-', String(url)]
+          : ['-f', 'b/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', '-', String(url)];
+
+        res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+
+        const ytProc = spawn(ytBin, fallbackArgs);
+        ytProc.stdout.pipe(res);
+      } catch (fallbackErr) {
+        res.status(500).send('İndirme hatası oluştu.');
+      }
     }
   });
 

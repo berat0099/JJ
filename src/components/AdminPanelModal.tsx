@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   Shield,
   RefreshCw,
-  Power
+  Power,
+  Zap
 } from 'lucide-react';
 import { AdminStats, Announcement, Language, UserProfile } from '../types';
 import { mockAdminStats } from '../data/sampleData';
@@ -531,6 +532,37 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 >
                   <Power className="w-4 h-4" />
                   <span>{isMaintenanceMode ? 'Bakım Modu AÇIK' : 'Bakım Modu KAPALI'}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-xl bg-purple-950/40 border border-purple-500/30">
+                <div>
+                  <p className="font-bold text-purple-300 text-xs flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    Anlık Güncelleme Yayınla
+                  </p>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Tüm aktif kullanıcılara 5 saniyelik "Yeni Güncelleme Geldi - Yenile" bildirimi gönderir.
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const { setDoc } = await import('firebase/firestore');
+                      await setDoc(doc(db, 'settings', 'general'), {
+                        lastVersionUpdate: new Date().toISOString(),
+                        updateNote: 'Sistem güncellendi. Yeni performans geliştirmeleri aktif edildi.'
+                      }, { merge: true });
+                      alert('⚡ Canlı güncelleme bildirimi tüm kullanıcılara gönderildi!');
+                    } catch (e) {
+                      console.error(e);
+                      alert('Güncelleme duyurulamadı, lütfen tekrar deneyin.');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-md shadow-purple-900/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Güncellemeyi Yayınla</span>
                 </button>
               </div>
             </div>
