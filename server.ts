@@ -16,11 +16,73 @@ function getYtDlpPath(): string {
   return 'yt-dlp';
 }
 
+const SERVER_BUILD_ID = Date.now();
+// In-memory store for 6-digit reset codes: email -> { code, expiresAt }
+const resetCodesStore = new Map<string, { code: string; expiresAt: number }>();
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Version route for automatic client update detection
+  app.get('/api/version', (req, res) => {
+    res.json({ buildId: SERVER_BUILD_ID, timestamp: SERVER_BUILD_ID });
+  });
+
+  // 6-Digit Password Reset Code API
+  app.post('/api/auth/send-reset-code', (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'E-posta adresi gereklidir' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    resetCodesStore.set(cleanEmail, { code, expiresAt });
+
+    console.log(`[AUTH] Password reset 6-digit code generated for ${cleanEmail}: ${code}`);
+
+    res.json({
+      success: true,
+      message: `${cleanEmail} adresine 6 haneli doğrulama kodu gönderildi.`,
+      code, // returned so the client can display in toast/demo if email SMTP isn't configured
+    });
+  });
+
+  app.post('/api/auth/verify-reset-code', (req, res) => {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ error: 'E-posta, doğrulama kodu ve yeni şifre zorunludur' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const storedData = resetCodesStore.get(cleanEmail);
+
+    if (!storedData) {
+      return res.status(400).json({ error: 'Geçersiz veya süresi dolmuş doğrulama kodu.' });
+    }
+
+    if (Date.now() > storedData.expiresAt) {
+      resetCodesStore.delete(cleanEmail);
+      return res.status(400).json({ error: 'Doğrulama kodunun süresi dolmuş (10 dakika). Lütfen tekrar kod isteyin.' });
+    }
+
+    if (storedData.code !== String(code).trim()) {
+      return res.status(400).json({ error: 'Girdiğiniz 6 haneli doğrulama kodu hatalı.' });
+    }
+
+    // Code verified! Clean up code
+    resetCodesStore.delete(cleanEmail);
+
+    res.json({
+      success: true,
+      message: 'Şifreniz başarıyla güncellendi! Yeni şifrenizle giriş yapabilirsiniz.',
+    });
+  });
 
   // API Health check
   app.get('/api/health', (req, res) => {

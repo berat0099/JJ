@@ -34,21 +34,6 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspe
             <p className="text-xs text-slate-300 leading-relaxed max-w-sm">
               {t.aboutDesc}
             </p>
-
-            <div className="flex items-center gap-3 pt-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                {t.statusOnline}
-              </span>
-
-              <button
-                onClick={onOpenSeoInspector}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 text-[10px] font-bold transition-colors"
-              >
-                <Globe className="w-3 h-3 text-blue-400" />
-                <span>SEO & Schema Müfettişi</span>
-              </button>
-            </div>
           </div>
 
           {/* Navigation Links */}
@@ -63,11 +48,6 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspe
               <li>
                 <button onClick={() => onNavClick('platforms')} className="hover:text-white transition-colors">
                   {t.navPlatforms}
-                </button>
-              </li>
-              <li>
-                <button onClick={() => onNavClick('api')} className="hover:text-white transition-colors">
-                  {t.navApi}
                 </button>
               </li>
               <li>
@@ -95,11 +75,6 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspe
               <li>
                 <a href="#terms" className="hover:text-white transition-colors">
                   {t.termsOfService}
-                </a>
-              </li>
-              <li>
-                <a href="#api" onClick={() => onNavClick('api')} className="hover:text-white transition-colors">
-                  REST API Dokümantasyonu
                 </a>
               </li>
             </ul>

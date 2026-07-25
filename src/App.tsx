@@ -223,9 +223,6 @@ export default function App() {
           }}
         />
 
-        {/* API Section */}
-        <ApiDocsSection lang={lang} />
-
         {/* FAQ Section */}
         <FaqSection lang={lang} />
 
@@ -299,12 +296,6 @@ export default function App() {
           }
         }}
         isMaintenanceMode={isMaintenanceMode}
-      />
-
-      <SeoSchemaInspector
-        isOpen={seoInspectorOpen}
-        onClose={() => setSeoInspectorOpen(false)}
-        lang={lang}
       />
 
       {/* PWA Floating Banner, Update Notification & Toast System */}

@@ -9,9 +9,37 @@ export const UpdateNotification: React.FC = () => {
   const [countdown, setCountdown] = useState(5);
   const [versionNote, setVersionNote] = useState<string>('Sistem performansı ve yeni indirme modülleri güncellendi.');
   const initialLoadTime = useRef(Date.now());
+  const initialBuildIdRef = useRef<number | null>(null);
   const timerRef = useRef<any>(null);
 
   useEffect(() => {
+    // Fetch initial server build version
+    fetch('/api/version')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.buildId) {
+          initialBuildIdRef.current = data.buildId;
+        }
+      })
+      .catch((e) => console.warn('Version check error:', e));
+
+    // Polling server /api/version every 15 seconds for automatic deployment detection
+    const versionInterval = setInterval(() => {
+      fetch('/api/version')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.buildId) {
+            if (initialBuildIdRef.current === null) {
+              initialBuildIdRef.current = data.buildId;
+            } else if (data.buildId !== initialBuildIdRef.current) {
+              setVersionNote('Siteye yeni güncelleme yayınlandı! Sistem otomatik güncelleniyor.');
+              setShowUpdatePrompt(true);
+            }
+          }
+        })
+        .catch(() => {});
+    }, 15000);
+
     // 1. Real-time Firestore sync for remote version updates
     let unsubscribe: () => void = () => {};
     try {
@@ -44,6 +72,7 @@ export const UpdateNotification: React.FC = () => {
     }
 
     return () => {
+      clearInterval(versionInterval);
       unsubscribe();
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.removeEventListener('controllerchange', handleSwUpdate);

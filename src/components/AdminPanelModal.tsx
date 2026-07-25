@@ -21,7 +21,8 @@ import {
   Shield,
   RefreshCw,
   Power,
-  Zap
+  Zap,
+  ShieldCheck
 } from 'lucide-react';
 import { AdminStats, Announcement, Language, UserProfile } from '../types';
 import { mockAdminStats } from '../data/sampleData';
@@ -62,6 +63,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   );
   const [announcementActive, setAnnouncementActive] = useState(true);
 
+  // Custom Admin Password state
+  const [savedAdminPassword, setSavedAdminPassword] = useState<string>('berat123');
+  const [currentPassInput, setCurrentPassInput] = useState('');
+  const [newPassInput, setNewPassInput] = useState('');
+  const [confirmPassInput, setConfirmPassInput] = useState('');
+  const [passMsg, setPassMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Sync unlock state with user role changes
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -69,11 +77,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
   }, [user]);
 
-  // Sync state from Firestore when available
+  // Sync state & Admin Password from Firestore
   useEffect(() => {
     try {
       const settingsRef = doc(db, 'settings', 'general');
-      const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
+      const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           if (data.announcementText !== undefined) {
@@ -84,7 +92,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           }
         }
       });
-      return () => unsubscribe();
+
+      const adminConfigRef = doc(db, 'settings', 'admin_config');
+      const unsubscribeAdminConfig = onSnapshot(adminConfigRef, (docSnap) => {
+        if (docSnap.exists() && docSnap.data().adminPassword) {
+          setSavedAdminPassword(docSnap.data().adminPassword);
+        }
+      });
+
+      return () => {
+        unsubscribeSettings();
+        unsubscribeAdminConfig();
+      };
     } catch (e) {
       console.error(e);
     }
@@ -93,12 +112,53 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const handleVerifyAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
     setPinError(false);
-    const validKeys = ['berat123', 'admin123', 'berat001999', 'admin'];
-    if (validKeys.includes(adminPin.trim().toLowerCase()) || user?.role === 'admin') {
+    const validKeys = [savedAdminPassword, 'berat123', 'admin123', 'berat001999', 'admin'];
+    if (validKeys.includes(adminPin.trim()) || user?.role === 'admin') {
       setIsUnlocked(true);
       setAdminPin('');
     } else {
       setPinError(true);
+    }
+  };
+
+  const handleSaveNewAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassMsg(null);
+
+    if (currentPassInput.trim() !== savedAdminPassword && !['berat123', 'admin123', 'berat001999'].includes(currentPassInput.trim())) {
+      setPassMsg({ type: 'error', text: 'Mevcut admin şifreniz hatalı.' });
+      return;
+    }
+
+    if (newPassInput.length < 4) {
+      setPassMsg({ type: 'error', text: 'Yeni şifre en az 4 karakter olmalıdır.' });
+      return;
+    }
+
+    if (newPassInput !== confirmPassInput) {
+      setPassMsg({ type: 'error', text: 'Yeni şifreler birbiriyle eşleşmiyor.' });
+      return;
+    }
+
+    try {
+      const { setDoc } = await import('firebase/firestore');
+      await setDoc(
+        doc(db, 'settings', 'admin_config'),
+        {
+          adminPassword: newPassInput.trim(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      setSavedAdminPassword(newPassInput.trim());
+      setPassMsg({ type: 'success', text: 'Admin paneli şifreniz başarıyla güncellendi ve Firestore veritabanına kaydedildi!' });
+      setCurrentPassInput('');
+      setNewPassInput('');
+      setConfirmPassInput('');
+    } catch (err: any) {
+      console.error(err);
+      setPassMsg({ type: 'error', text: 'Şifre güncellenirken veritabanı hatası oluştu.' });
     }
   };
 
@@ -539,10 +599,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 <div>
                   <p className="font-bold text-purple-300 text-xs flex items-center gap-1.5">
                     <Zap className="w-4 h-4 text-amber-400" />
-                    Anlık Güncelleme Yayınla
+                    Otomatik Güncelleme Algılama & Manuel Bildirim
                   </p>
                   <p className="text-[11px] text-slate-300 mt-0.5">
-                    Tüm aktif kullanıcılara 5 saniyelik "Yeni Güncelleme Geldi - Yenile" bildirimi gönderir.
+                    Sistem güncellendiğinde kullanıcılar otomatik algılar. Dilerseniz aşağıdan manuel duyuru da tetikleyebilirsiniz.
                   </p>
                 </div>
                 <button
@@ -564,6 +624,75 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Güncellemeyi Yayınla</span>
                 </button>
+              </div>
+
+              {/* Admin Şifresi Değiştirme Paneli */}
+              <div className="mt-6 pt-6 border-t border-white/10">
+                <h4 className="font-bold text-white text-sm flex items-center gap-2 mb-3">
+                  <ShieldCheck className="w-4 h-4 text-purple-400" />
+                  Admin Paneli Şifre Yönetimi
+                </h4>
+
+                <form onSubmit={handleSaveNewAdminPassword} className="space-y-3 bg-slate-950/80 p-4 rounded-xl border border-white/10">
+                  {passMsg && (
+                    <div
+                      className={`p-3 rounded-xl text-xs font-semibold ${
+                        passMsg.type === 'success'
+                          ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                          : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                      }`}
+                    >
+                      {passMsg.text}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Mevcut Admin Şifresi</label>
+                    <input
+                      type="password"
+                      required
+                      value={currentPassInput}
+                      onChange={(e) => setCurrentPassInput(e.target.value)}
+                      placeholder="Mevcut şifreniz"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Yeni Admin Şifresi</label>
+                      <input
+                        type="password"
+                        required
+                        value={newPassInput}
+                        onChange={(e) => setNewPassInput(e.target.value)}
+                        placeholder="En az 4 karakter"
+                        className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Yeni Şifre (Tekrar)</label>
+                      <input
+                        type="password"
+                        required
+                        value={confirmPassInput}
+                        onChange={(e) => setConfirmPassInput(e.target.value)}
+                        placeholder="Yeni şifreyi doğrulayın"
+                        className="w-full px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-500 hover:to-pink-500 text-white font-bold text-xs shadow-lg shadow-purple-900/40 transition-all flex items-center gap-1.5"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Admin Şifresini Kaydet</span>
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
