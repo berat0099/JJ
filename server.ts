@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { createServer as createViteServer } from 'vite';
@@ -178,56 +180,83 @@ async function startServer() {
   });
 
   // Media Download / Stream endpoint using yt-dlp
-  app.get('/api/download', (req, res) => {
+  app.get('/api/download', async (req, res) => {
     const { url, type, formatId, title } = req.query;
-    const cleanTitle = (title as string || 'mediastream-download').replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (!url) {
+      return res.status(400).send('URL parametresi eksik');
+    }
+
+    const cleanTitle = (title as string || 'mediastream-download')
+      .replace(/[^a-zA-Z0-9_\-\u00C0-\u024F]/g, '_')
+      .slice(0, 60);
     const ext = type === 'audio' ? 'mp3' : 'mp4';
-    const fileName = `${cleanTitle}.${ext}`;
+    const filename = `${cleanTitle}.${ext}`;
+    const tmpDir = os.tmpdir();
+    const tempFileId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const outputPath = path.join(tmpDir, `${tempFileId}.${ext}`);
 
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-    res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
-
-    if (url) {
-      const baseArgs = [
-        '-N', '8',
-        '--buffer-size', '1M',
-        '--no-playlist',
-        '--no-warnings',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-      ];
-
-      let typeArgs: string[] = [];
+    try {
+      let formatSelector = '';
       if (type === 'audio') {
-        typeArgs = [
-          '-f', formatId ? String(formatId) : 'ba/b/bestaudio',
-          '-x',
-          '--audio-format', 'mp3',
-          '--audio-quality', '0',
-          '-o', '-',
-          String(url)
-        ];
+        formatSelector = formatId && formatId !== 'undefined' ? `${formatId}/ba/bestaudio` : 'ba/bestaudio/best';
       } else {
-        typeArgs = [
-          '-f', formatId ? String(formatId) : 'b[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-          '--merge-output-format', 'mp4',
-          '-o', '-',
-          String(url)
-        ];
+        if (formatId && formatId !== 'undefined' && formatId !== 'best') {
+          // Merge chosen video format with best available audio stream
+          formatSelector = `${formatId}+ba/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best`;
+        } else {
+          formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+        }
       }
 
-      const ytProc = spawn('yt-dlp', [...baseArgs, ...typeArgs]);
+      const args = [
+        '-N', '8',
+        '--no-playlist',
+        '--no-warnings',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        '-f', formatSelector,
+        '-o', outputPath
+      ];
 
-      ytProc.stdout.pipe(res);
+      if (type === 'audio') {
+        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+      } else {
+        args.push('--recode-video', 'mp4', '--merge-output-format', 'mp4');
+      }
 
-      ytProc.stderr.on('data', (data) => {
-        console.error('yt-dlp download stderr:', data.toString());
+      args.push(String(url));
+
+      // Execute yt-dlp to download and convert on disk
+      await execFileAsync('yt-dlp', args, { timeout: 120000 });
+
+      // Check if output file exists or if yt-dlp modified extension
+      let finalFilePath = outputPath;
+      if (!fs.existsSync(finalFilePath)) {
+        const matchingFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith(tempFileId));
+        if (matchingFiles.length > 0) {
+          finalFilePath = path.join(tmpDir, matchingFiles[0]);
+        } else {
+          return res.status(500).send('Medya indirilemedi, lütfen tekrar deneyin.');
+        }
+      }
+
+      res.download(finalFilePath, filename, (err) => {
+        try {
+          if (fs.existsSync(finalFilePath)) {
+            fs.unlinkSync(finalFilePath);
+          }
+        } catch (e) {
+          console.error('Temp file cleanup error:', e);
+        }
       });
+    } catch (error: any) {
+      console.error('Download processing error:', error);
+      try {
+        if (fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+      } catch (e) {}
 
-      req.on('close', () => {
-        ytProc.kill();
-      });
-    } else {
-      res.send(`MediaStream Payload (${type || 'video'})`);
+      res.status(500).send('İndirme ve medya işleme hatası oluştu. Lütfen bağlantıyı kontrol edip tekrar deneyin.');
     }
   });
 

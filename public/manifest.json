@@ -1,0 +1,25 @@
+{
+  "short_name": "MediaStream",
+  "name": "MediaStream Pro - Medya ve Video İndirici",
+  "description": "Sosyal medya ve video platformlarından 4K, 1080p video ve MP3 ses indirin.",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#8b5cf6",
+  "display": "standalone",
+  "orientation": "portrait",
+  "categories": ["utilities", "media"]
+}
