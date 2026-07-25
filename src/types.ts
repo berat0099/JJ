@@ -116,9 +116,18 @@ export interface AdminStats {
 export interface Announcement {
   id: string;
   title: string;
-  type: 'info' | 'warning' | 'success';
-  active: boolean;
+  type: 'info' | 'warning' | 'success' | 'promo';
+  badgeText?: string;
   link?: string;
+  linkText?: string;
+  active: boolean;
+}
+
+export interface PricingSettings {
+  monthlyPrice: number;
+  yearlyDiscountPercent: number;
+  yearlyPrice: number;
+  currency: string;
 }
 
 export interface ToastMessage {

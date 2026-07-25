@@ -75,19 +75,19 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspe
             <h4 className="font-bold text-white text-sm">{t.legalLinks}</h4>
             <ul className="space-y-2">
               <li>
-                <a href="#contact" onClick={() => onNavClick('contact')} className="hover:text-white transition-colors">
+                <button onClick={() => onNavClick('contact')} className="hover:text-white transition-colors">
                   {t.navContact}
-                </a>
+                </button>
               </li>
               <li>
-                <a href="#privacy" className="hover:text-white transition-colors">
+                <button onClick={() => onNavClick('faq')} className="hover:text-white transition-colors">
                   {t.privacyPolicy}
-                </a>
+                </button>
               </li>
               <li>
-                <a href="#terms" className="hover:text-white transition-colors">
+                <button onClick={() => onNavClick('faq')} className="hover:text-white transition-colors">
                   {t.termsOfService}
-                </a>
+                </button>
               </li>
             </ul>
           </div>

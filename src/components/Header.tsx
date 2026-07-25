@@ -15,7 +15,14 @@ import {
   History,
   Heart,
   Settings,
-  Bell
+  Bell,
+  MoreVertical,
+  HelpCircle,
+  Mail,
+  Zap,
+  Code2,
+  Terminal,
+  Home
 } from 'lucide-react';
 import { Language, ThemeMode, UserProfile, Announcement } from '../types';
 import { translations } from '../data/translations';
@@ -51,30 +58,58 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [announcementDismissed, setAnnouncementDismissed] = useState(false);
   const t = translations[lang];
 
+  const isAdmin = user?.role === 'admin';
+
   const navItems = [
-    { id: 'hero', label: t.navHome },
-    { id: 'platforms', label: t.navPlatforms },
-    { id: 'faq', label: t.navFaq },
-    { id: 'contact', label: t.navContact },
+    { id: 'hero', label: t.navHome, icon: Home },
+    { id: 'platforms', label: t.navPlatforms, icon: Zap },
+    { id: 'faq', label: t.navFaq, icon: HelpCircle },
+    { id: 'contact', label: t.navContact, icon: Mail },
+    ...(isAdmin ? [{ id: 'api', label: 'API & Entegrasyon', icon: Code2 }] : []),
   ];
+
+  const handleNavSelect = (id: string) => {
+    setMoreMenuOpen(false);
+    setMobileMenuOpen(false);
+    setTimeout(() => {
+      onNavClick(id);
+    }, 10);
+  };
 
   return (
     <header className="sticky top-0 z-40 w-full backdrop-blur-xl border-b border-white/10 bg-slate-950/70 transition-colors duration-300">
-      {/* Announcement Bar if active */}
-      {announcement && announcement.active && (
-        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white text-xs py-1.5 px-4 text-center font-medium flex items-center justify-center gap-2 shadow-inner">
-          <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-300" />
-          <span>{announcement.title}</span>
-          {announcement.link && (
-            <a
-              href={announcement.link}
-              className="underline font-bold hover:text-amber-200 transition-colors"
-            >
-              Detaylar →
-            </a>
-          )}
+      {/* Enhanced Announcement Bar if active */}
+      {announcement && announcement.active && !announcementDismissed && (
+        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white text-xs py-2 px-4 text-center font-medium flex items-center justify-between gap-2 shadow-inner border-b border-white/10 relative overflow-hidden">
+          <div className="flex-1 flex items-center justify-center flex-wrap gap-2">
+            <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-slate-950 animate-bounce" />
+              {announcement.badgeText || 'DUYURU'}
+            </span>
+            <span className="font-semibold text-slate-100">{announcement.title}</span>
+            {announcement.link && (
+              <a
+                href={announcement.link}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition-all underline decoration-amber-300 underline-offset-2 flex items-center gap-1 ml-1"
+              >
+                <span>{announcement.linkText || 'Detayları Gör →'}</span>
+              </a>
+            )}
+          </div>
+
+          <button
+            onClick={() => setAnnouncementDismissed(true)}
+            className="text-white/80 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors shrink-0"
+            title="Duyuruyu Kapat"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
@@ -104,16 +139,14 @@ export const Header: React.FC<HeaderProps> = ({
                 CONVERTER & DOWNLOADER
               </span>
             </div>
-          </div>
-
-          {/* Desktop Navigation */}
+          </div>          {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-1 bg-white/5 p-1.5 rounded-full border border-white/10 backdrop-blur-md">
             {navItems.map((item) => {
               const isActive = activeNav === item.id;
               return (
                 <button
                   key={item.id}
-                  onClick={() => onNavClick(item.id)}
+                  onClick={() => handleNavSelect(item.id)}
                   className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 relative ${
                     isActive
                       ? 'text-white bg-gradient-to-r from-blue-600 to-purple-600 shadow-md shadow-purple-900/30 font-semibold'
@@ -126,8 +159,8 @@ export const Header: React.FC<HeaderProps> = ({
             })}
           </nav>
 
-          {/* Right Actions: Lang, Theme, Admin, Auth */}
-          <div className="hidden sm:flex items-center gap-3">
+          {/* Right Actions: Lang, Theme, Admin, Auth, 3-Dots */}
+          <div className="hidden sm:flex items-center gap-2.5">
             {/* Language Switcher */}
             <button
               onClick={() => onLanguageChange(lang === 'tr' ? 'en' : 'tr')}
@@ -159,7 +192,7 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-purple-600/20 border-purple-500/50 text-purple-300 hover:bg-purple-600/30 shadow-purple-900/40'
                   : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
               }`}
-              title="Admin Kontrol Paneli (Gizli / Korumalı)"
+              title="Admin Kontrol Paneli"
             >
               <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
               <span>{user?.role === 'admin' ? '👑 ' + t.navAdmin : '🔒 Yönetici Girişi'}</span>
@@ -169,7 +202,10 @@ export const Header: React.FC<HeaderProps> = ({
             {user ? (
               <div className="relative">
                 <button
-                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  onClick={() => {
+                    setUserDropdownOpen(!userDropdownOpen);
+                    setMoreMenuOpen(false);
+                  }}
                   className="flex items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 transition-all"
                 >
                   <img
@@ -266,18 +302,76 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onOpenAuth('login')}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/10 transition-all"
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/10 transition-all"
                 >
                   {t.navLogin}
                 </button>
                 <button
                   onClick={() => onOpenAuth('register')}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-md shadow-purple-900/30 transition-all hover:scale-105"
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-md shadow-purple-900/30 transition-all hover:scale-105"
                 >
                   {t.navRegister}
                 </button>
               </div>
             )}
+
+            {/* 3-Dots Quick Menu Button (Right-most header button) */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setMoreMenuOpen(!moreMenuOpen);
+                  setUserDropdownOpen(false);
+                }}
+                className={`p-2.5 rounded-xl border transition-all ${
+                  moreMenuOpen
+                    ? 'bg-blue-600/30 border-blue-400/50 text-white shadow-lg'
+                    : 'bg-white/5 border-white/10 text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+                title="Tüm Sayfa Seçenekleri & Menü (3 Nokta)"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+
+              <AnimatePresence>
+                {moreMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900/95 border border-white/15 backdrop-blur-2xl shadow-2xl p-2.5 z-50 text-xs"
+                  >
+                    <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between text-slate-400 font-medium">
+                      <span>HIZLI ERİŞİM MENÜSÜ</span>
+                      <MoreVertical className="w-3.5 h-3.5 text-blue-400" />
+                    </div>
+
+                    <div className="py-1 space-y-1">
+                      {navItems.map((item) => {
+                        const IconComponent = item.icon;
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handleNavSelect(item.id)}
+                            className="w-full px-3 py-2.5 rounded-xl text-left text-slate-200 hover:text-white hover:bg-white/10 flex items-center gap-2.5 transition-colors font-medium"
+                          >
+                            <IconComponent className="w-4 h-4 text-purple-400 shrink-0" />
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        onClick={() => handleNavSelect('diagnostic')}
+                        className="w-full px-3 py-2.5 rounded-xl text-left text-cyan-300 hover:bg-cyan-500/10 flex items-center gap-2.5 transition-colors font-semibold"
+                      >
+                        <Terminal className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <span>Ağ & Teşhis Konsolu</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
           {/* Mobile Menu Toggle Button */}
@@ -290,10 +384,10 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2.5 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors"
+              className="p-2.5 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center gap-1"
               aria-label="Toggle Menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <MoreVertical className="w-5 h-5" />}
             </button>
           </div>
         </div>
@@ -309,22 +403,31 @@ export const Header: React.FC<HeaderProps> = ({
             className="lg:hidden border-t border-white/10 bg-slate-950/95 backdrop-blur-2xl overflow-hidden px-4 py-6"
           >
             <div className="flex flex-col gap-2">
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onNavClick(item.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`px-4 py-3 rounded-xl text-left text-sm font-medium transition-colors ${
-                    activeNav === item.id
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold'
-                      : 'text-slate-300 hover:bg-white/5'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {navItems.map((item) => {
+                const IconComp = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavSelect(item.id)}
+                    className={`px-4 py-3 rounded-xl text-left text-sm font-medium transition-colors flex items-center gap-3 ${
+                      activeNav === item.id
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold'
+                        : 'text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <IconComp className="w-4 h-4 text-purple-300 shrink-0" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => handleNavSelect('diagnostic')}
+                className="px-4 py-3 rounded-xl text-left text-sm font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 flex items-center gap-3"
+              >
+                <Terminal className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Ağ & Teşhis Konsolu</span>
+              </button>
 
               <div className="pt-4 border-t border-white/10 flex flex-col gap-2">
                 <button

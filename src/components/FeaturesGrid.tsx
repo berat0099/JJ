@@ -39,7 +39,7 @@ export const FeaturesGrid: React.FC<FeaturesGridProps> = ({ lang }) => {
   ];
 
   return (
-    <section className="py-16 relative border-y border-white/10 bg-slate-950/40 backdrop-blur-md">
+    <section id="features" className="py-16 relative border-y border-white/10 bg-slate-950/40 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {features.map((feat, idx) => {

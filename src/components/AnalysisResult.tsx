@@ -19,25 +19,30 @@ import {
   ExternalLink,
   ShieldCheck,
   RefreshCw,
-  Terminal
+  Terminal,
+  Crown
 } from 'lucide-react';
-import { MediaAnalysisResult, Language } from '../types';
+import { MediaAnalysisResult, Language, UserProfile } from '../types';
 import { translations } from '../data/translations';
 
 interface AnalysisResultProps {
   media: MediaAnalysisResult;
   lang: Language;
+  user?: UserProfile | null;
   onSaveFavorite?: (media: MediaAnalysisResult) => void;
   isFavorite?: boolean;
   onOpenDiagnosticConsole?: () => void;
+  onOpenPremiumModal?: (feature: '4k' | '2k' | '320kbps' | 'general') => void;
 }
 
 export const AnalysisResult: React.FC<AnalysisResultProps> = ({
   media,
   lang,
+  user,
   onSaveFavorite,
   isFavorite = false,
   onOpenDiagnosticConsole,
+  onOpenPremiumModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'video' | 'audio'>('video');
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
@@ -57,6 +62,21 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
   const t = translations[lang];
 
   const handleStartDownload = async (formatStr: string, resStr: string, sizeStr: string, formatId?: string) => {
+    // Check if requested option requires Premium membership
+    const is4k = resStr.includes('2160p') || resStr.includes('4K') || resStr.toLowerCase().includes('4k');
+    const is2k = resStr.includes('1440p') || resStr.includes('2K') || resStr.toLowerCase().includes('2k');
+    const is320k = resStr.includes('320 kbps') || formatStr.includes('320');
+
+    const isPremiumUser = user && (user.plan === 'Pro Unlimited' || user.plan === 'API Developer' || user.role === 'admin' || user.role === 'vip');
+
+    if ((is4k || is2k || is320k) && !isPremiumUser) {
+      const feature = is4k ? '4k' : is2k ? '2k' : '320kbps';
+      if (onOpenPremiumModal) {
+        onOpenPremiumModal(feature);
+      }
+      return;
+    }
+
     setDownloadingFormat(`${formatStr}-${resStr}`);
     const isAudio = formatStr.toLowerCase().includes('mp3');
 
@@ -300,15 +320,18 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                   <tbody className="divide-y divide-white/5">
                     {media.videoOptions.map((opt, idx) => {
                       const isTarget = downloadingFormat === `${opt.format}-${opt.resolution}`;
+                      const isPremiumOption = opt.quality === '4k' || opt.quality === '2k' || opt.resolution.includes('2160p') || opt.resolution.includes('1440p');
+                      const userHasPremium = user && (user.plan === 'Pro Unlimited' || user.plan === 'API Developer' || user.role === 'admin' || user.role === 'vip');
+
                       return (
                         <tr key={idx} className="hover:bg-white/5 transition-colors">
                           <td className="px-4 py-4 font-bold text-white flex items-center gap-2">
                             <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs font-mono">
                               {opt.format}
                             </span>
-                            {opt.quality === '4k' && (
-                              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-extrabold border border-amber-500/40">
-                                4K
+                            {isPremiumOption && (
+                              <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-purple-500/20 to-pink-500/20 text-amber-300 text-[10px] font-black border border-amber-500/40 flex items-center gap-1 shadow-sm">
+                                <Crown className="w-3 h-3 text-amber-400" /> PREMIUM
                               </span>
                             )}
                           </td>
@@ -342,10 +365,23 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                             ) : (
                               <button
                                 onClick={() => handleStartDownload(opt.format, opt.resolution, opt.size, opt.formatId)}
-                                className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-xs shadow-md shadow-purple-900/30 transition-all hover:scale-105 flex items-center gap-1.5 ml-auto"
+                                className={`px-4 py-2 rounded-xl text-white font-semibold text-xs shadow-md transition-all hover:scale-105 flex items-center gap-1.5 ml-auto ${
+                                  isPremiumOption && !userHasPremium
+                                    ? 'bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 shadow-amber-900/30'
+                                    : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-purple-900/30'
+                                }`}
                               >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>{t.btnDownload}</span>
+                                {isPremiumOption && !userHasPremium ? (
+                                  <>
+                                    <Crown className="w-3.5 h-3.5 text-amber-300" />
+                                    <span>Premium İndir</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="w-3.5 h-3.5" />
+                                    <span>{t.btnDownload}</span>
+                                  </>
+                                )}
                               </button>
                             )}
                           </td>
@@ -373,15 +409,18 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                   <tbody className="divide-y divide-white/5">
                     {media.audioOptions.map((opt, idx) => {
                       const isTarget = downloadingFormat === `${opt.format}-${opt.bitrate}`;
+                      const isPremiumAudio = opt.bitrate.includes('320') || opt.quality === 'ultra';
+                      const userHasPremium = user && (user.plan === 'Pro Unlimited' || user.plan === 'API Developer' || user.role === 'admin' || user.role === 'vip');
+
                       return (
                         <tr key={idx} className="hover:bg-white/5 transition-colors">
                           <td className="px-4 py-4 font-bold text-white flex items-center gap-2">
                             <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs font-mono">
                               {opt.format}
                             </span>
-                            {opt.quality === 'ultra' && (
-                              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-extrabold border border-amber-500/40">
-                                Ultra HQ
+                            {isPremiumAudio && (
+                              <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-purple-500/20 to-pink-500/20 text-amber-300 text-[10px] font-black border border-amber-500/40 flex items-center gap-1 shadow-sm">
+                                <Crown className="w-3 h-3 text-amber-400" /> PREMIUM (320kbps)
                               </span>
                             )}
                           </td>
@@ -410,10 +449,23 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                             ) : (
                               <button
                                 onClick={() => handleStartDownload(opt.format, opt.bitrate, opt.size, opt.formatId)}
-                                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs shadow-md shadow-purple-900/30 transition-all hover:scale-105 flex items-center gap-1.5 ml-auto"
+                                className={`px-4 py-2 rounded-xl text-white font-semibold text-xs shadow-md transition-all hover:scale-105 flex items-center gap-1.5 ml-auto ${
+                                  isPremiumAudio && !userHasPremium
+                                    ? 'bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 shadow-amber-900/30'
+                                    : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-purple-900/30'
+                                }`}
                               >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>{t.btnDownload}</span>
+                                {isPremiumAudio && !userHasPremium ? (
+                                  <>
+                                    <Crown className="w-3.5 h-3.5 text-amber-300" />
+                                    <span>Premium İndir</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="w-3.5 h-3.5" />
+                                    <span>{t.btnDownload}</span>
+                                  </>
+                                )}
                               </button>
                             )}
                           </td>

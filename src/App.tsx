@@ -146,9 +146,22 @@ export default function App() {
 
   const handleNavClick = (navId: string) => {
     setActiveNav(navId);
+
+    if (navId === 'diagnostic') {
+      setDiagnosticModalOpen(true);
+      return;
+    }
+
     const el = document.getElementById(navId);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
+      const headerOffset = 90;
+      const elementPosition = el.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+      window.scrollTo({
+        top: Math.max(0, offsetPosition),
+        behavior: 'smooth'
+      });
     }
   };
 
@@ -258,6 +271,9 @@ export default function App() {
 
         {/* FAQ Section */}
         <FaqSection lang={lang} />
+
+        {/* API Docs Section */}
+        <ApiDocsSection lang={lang} />
 
         {/* Contact Section */}
         <ContactSection lang={lang} />
