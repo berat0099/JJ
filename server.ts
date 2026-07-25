@@ -5,6 +5,7 @@ import os from 'os';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { createServer as createViteServer } from 'vite';
+import nodemailer from 'nodemailer';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,8 +32,8 @@ async function startServer() {
     res.json({ buildId: SERVER_BUILD_ID, timestamp: SERVER_BUILD_ID });
   });
 
-  // 6-Digit Password Reset Code API
-  app.post('/api/auth/send-reset-code', (req, res) => {
+  // 6-Digit Password Reset Code API with Nodemailer SMTP & Graceful Fallback
+  app.post('/api/auth/send-reset-code', async (req, res) => {
     const { email } = req.body;
     if (!email || typeof email !== 'string') {
       return res.status(400).json({ error: 'E-posta adresi gereklidir' });
@@ -46,10 +47,55 @@ async function startServer() {
 
     console.log(`[AUTH] Password reset 6-digit code generated for ${cleanEmail}: ${code}`);
 
+    // SMTP Server Credentials
+    const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+    const smtpUser = process.env.SMTP_USER || 'berat001999@gmail.com';
+    const smtpPass = process.env.SMTP_PASS || 'xrbi vdkl odub ytac';
+
+    let emailSentReal = false;
+
+    if (smtpHost && smtpUser && smtpPass) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass.replace(/\s+/g, ''), // Strip spaces for Gmail app passwords
+          },
+        });
+
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || `"MediaStream Güvenlik" <${smtpUser}>`,
+          to: cleanEmail,
+          subject: '🔑 MediaStream Şifre Sıfırlama Doğrulama Kodu',
+          html: `
+            <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 16px; max-width: 500px; margin: auto; border: 1px solid #334155;">
+              <h2 style="color: #c084fc; margin-bottom: 10px;">MediaStream Şifre Sıfırlama</h2>
+              <p style="color: #94a3b8; font-size: 14px;">Hesabınız için şifre sıfırlama talebi alındı. Aşağıdaki 6 haneli doğrulama kodunu kullanabilirsiniz:</p>
+              <div style="background-color: #1e293b; border: 1px solid #a855f7; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #38bdf8;">${code}</span>
+              </div>
+              <p style="color: #64748b; font-size: 12px;">Bu kod 10 dakika boyunca geçerlidir. Talebi siz yapmadıysanız lütfen dikkate almayın.</p>
+            </div>
+          `,
+        });
+        emailSentReal = true;
+        console.log(`[AUTH] Real email successfully sent to ${cleanEmail} via Gmail SMTP!`);
+      } catch (sendErr) {
+        console.error(`[AUTH] SMTP email sending failed:`, sendErr);
+      }
+    }
+
     res.json({
       success: true,
-      message: `${cleanEmail} adresine 6 haneli doğrulama kodu gönderildi.`,
-      code, // returned so the client can display in toast/demo if email SMTP isn't configured
+      message: emailSentReal
+        ? `${cleanEmail} adresinize 6 haneli doğrulama kodu e-posta ile gönderildi!`
+        : `${cleanEmail} adresine 6 haneli doğrulama kodu oluşturuldu.`,
+      emailSentReal,
+      code, // return code so user can test seamlessly if SMTP server is not set up in container
     });
   });
 

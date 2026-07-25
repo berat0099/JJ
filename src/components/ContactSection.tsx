@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Mail, MessageSquare, Send, CheckCircle2, Phone, MapPin } from 'lucide-react';
+import { Mail, Send, CheckCircle2, Phone, MapPin } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { Language } from '../types';
 
 interface ContactSectionProps {
@@ -12,6 +14,36 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ lang }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+
+  // Dynamic Contact Data state
+  const [contactInfo, setContactInfo] = useState({
+    title: 'Bir Sorunuz mu Var? Bizimle İletişime Geçin',
+    desc: 'API entegrasyonu, kurumsal üyelik veya genel teknik sorularınız için 7/24 destek ekibimize ulaşabilirsiniz.',
+    supportEmail: 'support@mediastream.app',
+    phone: '+90 (850) 885 99 00',
+    address: 'Levent Plaza No:142, İstanbul',
+  });
+
+  useEffect(() => {
+    try {
+      const contactRef = doc(db, 'settings', 'contact');
+      const unsubscribe = onSnapshot(contactRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setContactInfo({
+            title: data.title || 'Bir Sorunuz mu Var? Bizimle İletişime Geçin',
+            desc: data.desc || 'API entegrasyonu, kurumsal üyelik veya genel teknik sorularınız için 7/24 destek ekibimize ulaşabilirsiniz.',
+            supportEmail: data.supportEmail || 'support@mediastream.app',
+            phone: data.phone || '+90 (850) 885 99 00',
+            address: data.address || 'Levent Plaza No:142, İstanbul',
+          });
+        }
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.error('Contact firestore error:', err);
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,11 +68,11 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ lang }) => {
             </div>
 
             <h2 className="text-3xl font-extrabold text-white tracking-tight">
-              Bir Sorunuz mu Var? Bizimle İletişime Geçin
+              {contactInfo.title}
             </h2>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              API entegrasyonu, kurumsal üyelik veya genel teknik sorularınız için 7/24 destek ekibimize ulaşabilirsiniz.
+              {contactInfo.desc}
             </p>
 
             <div className="space-y-4 pt-2 text-xs">
@@ -50,7 +82,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ lang }) => {
                 </div>
                 <div>
                   <span className="block text-[10px] text-slate-400">E-posta</span>
-                  <span className="font-semibold text-white">support@mediastream.app</span>
+                  <a href={`mailto:${contactInfo.supportEmail}`} className="font-semibold text-white hover:underline">
+                    {contactInfo.supportEmail}
+                  </a>
                 </div>
               </div>
 
@@ -60,7 +94,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ lang }) => {
                 </div>
                 <div>
                   <span className="block text-[10px] text-slate-400">Telefon / WhatsApp</span>
-                  <span className="font-semibold text-white">+90 (850) 885 99 00</span>
+                  <a href={`tel:${contactInfo.phone}`} className="font-semibold text-white hover:underline">
+                    {contactInfo.phone}
+                  </a>
                 </div>
               </div>
 
@@ -70,7 +106,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ lang }) => {
                 </div>
                 <div>
                   <span className="block text-[10px] text-slate-400">Ofis</span>
-                  <span className="font-semibold text-white">Levent Plaza No:142, İstanbul</span>
+                  <span className="font-semibold text-white">{contactInfo.address}</span>
                 </div>
               </div>
             </div>

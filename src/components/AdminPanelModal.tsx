@@ -22,7 +22,11 @@ import {
   RefreshCw,
   Power,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  Mail,
+  Phone,
+  MapPin,
+  MessageSquare
 } from 'lucide-react';
 import { AdminStats, Announcement, Language, UserProfile } from '../types';
 import { mockAdminStats } from '../data/sampleData';
@@ -50,7 +54,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   isMaintenanceMode,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'announcement' | 'users' | 'api' | 'seo' | 'settings' | 'logs'
+    'dashboard' | 'announcement' | 'users' | 'api' | 'seo' | 'contact' | 'settings' | 'logs'
   >('dashboard');
 
   const [isUnlocked, setIsUnlocked] = useState(user?.role === 'admin');
@@ -70,6 +74,14 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [confirmPassInput, setConfirmPassInput] = useState('');
   const [passMsg, setPassMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Contact Settings State
+  const [contactTitle, setContactTitle] = useState('Bir Sorunuz mu Var? Bizimle İletişime Geçin');
+  const [contactDesc, setContactDesc] = useState('API entegrasyonu, kurumsal üyelik veya genel teknik sorularınız için 7/24 destek ekibimize ulaşabilirsiniz.');
+  const [contactSupportEmail, setContactSupportEmail] = useState('support@mediastream.app');
+  const [contactPhone, setContactPhone] = useState('+90 (850) 885 99 00');
+  const [contactAddress, setContactAddress] = useState('Levent Plaza No:142, İstanbul');
+  const [contactSaveMsg, setContactSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Sync unlock state with user role changes
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -77,7 +89,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
   }, [user]);
 
-  // Sync state & Admin Password from Firestore
+  // Sync state & Admin Password & Contact Settings from Firestore
   useEffect(() => {
     try {
       const settingsRef = doc(db, 'settings', 'general');
@@ -100,14 +112,51 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         }
       });
 
+      const contactRef = doc(db, 'settings', 'contact');
+      const unsubscribeContact = onSnapshot(contactRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.title) setContactTitle(data.title);
+          if (data.desc) setContactDesc(data.desc);
+          if (data.supportEmail) setContactSupportEmail(data.supportEmail);
+          if (data.phone) setContactPhone(data.phone);
+          if (data.address) setContactAddress(data.address);
+        }
+      });
+
       return () => {
         unsubscribeSettings();
         unsubscribeAdminConfig();
+        unsubscribeContact();
       };
     } catch (e) {
       console.error(e);
     }
   }, []);
+
+  const handleSaveContactSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactSaveMsg(null);
+    try {
+      const { setDoc } = await import('firebase/firestore');
+      await setDoc(
+        doc(db, 'settings', 'contact'),
+        {
+          title: contactTitle.trim(),
+          desc: contactDesc.trim(),
+          supportEmail: contactSupportEmail.trim(),
+          phone: contactPhone.trim(),
+          address: contactAddress.trim(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      setContactSaveMsg({ type: 'success', text: 'İletişim & Destek bilgileri başarıyla Firestore veritabanına kaydedildi!' });
+    } catch (err: any) {
+      console.error(err);
+      setContactSaveMsg({ type: 'error', text: 'Kaydedilirken hata oluştu: ' + (err.message || 'Bilinmeyen hata') });
+    }
+  };
 
   const handleVerifyAdminPin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -334,6 +383,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           >
             <Globe className="w-3.5 h-3.5" />
             <span>{t.adminSeoSettings}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('contact')}
+            className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors ${
+              activeTab === 'contact'
+                ? 'bg-purple-600 text-white'
+                : 'text-slate-300 hover:bg-white/5'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5 text-emerald-400" />
+            <span>İletişim & Destek</span>
           </button>
 
           <button
@@ -569,6 +630,104 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/10 text-xs text-white"
                 />
               </div>
+            </div>
+          )}
+
+          {activeTab === 'contact' && (
+            <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-4">
+              <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                <Mail className="w-4 h-4 text-emerald-400" />
+                İletişim & Destek Sayfası Yönetimi
+              </h4>
+              <p className="text-xs text-slate-400">
+                Ana sayfadaki "İletişim & Destek" bölümündeki e-posta, telefon, adres ve bilgilendirme metinlerini canlı olarak güncelleyin.
+              </p>
+
+              <form onSubmit={handleSaveContactSettings} className="space-y-4 pt-2">
+                {contactSaveMsg && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-semibold ${
+                      contactSaveMsg.type === 'success'
+                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                        : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                    }`}
+                  >
+                    {contactSaveMsg.text}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">İletişim Başlığı</label>
+                  <input
+                    type="text"
+                    required
+                    value={contactTitle}
+                    onChange={(e) => setContactTitle(e.target.value)}
+                    placeholder="Bir Sorunuz mu Var? Bizimle İletişime Geçin"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Açıklama Metni</label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={contactDesc}
+                    onChange={(e) => setContactDesc(e.target.value)}
+                    placeholder="API entegrasyonu, kurumsal üyelik veya genel teknik sorularınız için..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Destek E-posta Adresi</label>
+                    <input
+                      type="email"
+                      required
+                      value={contactSupportEmail}
+                      onChange={(e) => setContactSupportEmail(e.target.value)}
+                      placeholder="support@mediastream.app"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">Telefon / WhatsApp</label>
+                    <input
+                      type="text"
+                      required
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      placeholder="+90 (850) 885 99 00"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Ofis Adresi</label>
+                  <input
+                    type="text"
+                    required
+                    value={contactAddress}
+                    onChange={(e) => setContactAddress(e.target.value)}
+                    placeholder="Levent Plaza No:142, İstanbul"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-900/40 transition-all flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>İletişim Bilgilerini Kaydet</span>
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
