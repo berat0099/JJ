@@ -591,17 +591,50 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                       <X className="w-8 h-8" />
                     </div>
 
-                    <h3 className="text-2xl font-black text-white">Hazırlık Başarısız Oldu</h3>
-                    <p className="text-xs text-rose-300 mt-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                    <h3 className="text-2xl font-black text-white">Hazırlık Tamamlanamadı</h3>
+                    <p className="text-xs text-rose-300 mt-2 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 leading-relaxed text-left">
                       {downloadModal.error}
                     </p>
 
-                    <button
-                      onClick={() => setDownloadModal(null)}
-                      className="mt-6 w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/10 transition-colors"
-                    >
-                      Kapat ve Tekrar Dene
-                    </button>
+                    <div className="mt-4 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-left text-[11px] text-blue-200">
+                      💡 <strong>İpucu:</strong> YouTube geçici IP doğrulaması istediğinde birkaç saniye bekleyip <strong>Tekrar Dene</strong> butonuna basabilir veya <strong>MP3 Ses</strong> formatını deneyebilirsiniz.
+                    </div>
+
+                    <div className="mt-6 flex flex-col gap-2.5">
+                      <button
+                        onClick={() => {
+                          const currentModal = downloadModal;
+                          setDownloadModal(null);
+                          setTimeout(() => {
+                            handleStartDownload(currentModal.format, currentModal.resolution, currentModal.size);
+                          }, 300);
+                        }}
+                        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-900/30 transition-all flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span>Tekrar Yeniden Dene</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setDownloadModal(null);
+                          setTimeout(() => {
+                            handleStartDownload('MP3', '320 kbps', 'Otomatik', 'bestaudio');
+                          }, 300);
+                        }}
+                        className="w-full py-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Music className="w-4 h-4" />
+                        <span>MP3 Ses Olarak İndirmeyi Dene</span>
+                      </button>
+
+                      <button
+                        onClick={() => setDownloadModal(null)}
+                        className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-medium text-xs transition-colors"
+                      >
+                        Kapat
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
