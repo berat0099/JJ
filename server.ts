@@ -349,11 +349,16 @@ async function startServer() {
       return res.status(400).send('URL parametresi eksik');
     }
 
-    const cleanTitle = (title as string || 'mediastream-download')
-      .replace(/[^a-zA-Z0-9_\-\u00C0-\u024F]/g, '_')
-      .slice(0, 60);
+    const rawTitle = String(title || 'MediaStream_Video');
+    const safeTitle = rawTitle
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_\- ]/g, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .slice(0, 50) || 'MediaStream_Video';
+
     const ext = type === 'audio' ? 'mp3' : 'mp4';
-    const filename = `${cleanTitle}.${ext}`;
+    const filename = `${safeTitle}.${ext}`;
 
     const tmpDir = os.tmpdir();
     const tempFileId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -364,18 +369,21 @@ async function startServer() {
       let formatSelector = '';
 
       if (type === 'audio') {
-        formatSelector = (formatId && formatId !== 'bestaudio' && formatId !== 'undefined') ? `${formatId}/ba/bestaudio/best` : 'ba/bestaudio/best';
+        formatSelector = (formatId && formatId !== 'bestaudio' && formatId !== 'undefined') 
+          ? `${formatId}/ba/bestaudio/best` 
+          : 'ba/bestaudio/best';
       } else {
         if (formatId && formatId !== 'best' && formatId !== 'undefined') {
           formatSelector = `${formatId}+bestaudio/bestvideo+bestaudio/best`;
         } else {
-          formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
+          formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
         }
       }
 
       const ytArgs = [
         '--no-playlist',
         '--no-warnings',
+        '--concurrent-fragments', '5',
         '--ffmpeg-location', '/usr/bin/ffmpeg',
         '-f', formatSelector,
         '-o', outputPath
@@ -389,8 +397,7 @@ async function startServer() {
 
       ytArgs.push(String(url));
 
-      console.log('[DOWNLOAD] Executing local yt-dlp & ffmpeg download...');
-      // 5-minute timeout for 30-min / long 4K / 1080p videos
+      console.log(`[DOWNLOAD] Executing yt-dlp for ${filename}...`);
       await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
 
       let finalFilePath = outputPath;
@@ -399,19 +406,18 @@ async function startServer() {
         if (matchingFiles.length > 0) {
           finalFilePath = path.join(tmpDir, matchingFiles[0]);
         } else {
-          throw new Error('İndirilen dosya diskte oluşturulamadı');
+          throw new Error('İndirilen dosya sunucu diskinde oluşturulamadı');
         }
       }
 
-      const stat = fs.statSync(finalFilePath);
-      res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
-      res.setHeader('Content-Length', stat.size);
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
-
-      return res.download(finalFilePath, filename, () => {
+      // Express res.download streams the file and sets proper Content-Disposition and Content-Type automatically
+      return res.download(finalFilePath, filename, (err) => {
         try {
           if (fs.existsSync(finalFilePath)) fs.unlinkSync(finalFilePath);
         } catch (e) {}
+        if (err && !res.headersSent) {
+          console.error('[DOWNLOAD] Stream error:', err);
+        }
       });
     } catch (error: any) {
       console.error('[DOWNLOAD] Local download failed:', error?.message || error);
@@ -420,7 +426,9 @@ async function startServer() {
       } catch (e) {}
 
       if (!res.headersSent) {
-        return res.status(500).send('İndirme işlemi tamamlanamadı. Lütfen tekrar deneyin.');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', 'inline');
+        return res.status(500).send(`İndirme işlemi tamamlanamadı: ${error?.message || 'Lütfen tekrar deneyin.'}`);
       }
     }
   });

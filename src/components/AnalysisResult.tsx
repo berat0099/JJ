@@ -421,7 +421,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                 <div className="mt-6 flex flex-col gap-3">
                   <a
                     href={readyModal.downloadUrl}
-                    download
+                    download={`${(media.title || 'video').replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'video'}.${readyModal.format.toLowerCase().includes('mp3') ? 'mp3' : 'mp4'}`}
                     className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-extrabold text-sm shadow-xl shadow-emerald-900/40 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     <Download className="w-5 h-5" />
