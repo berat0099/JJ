@@ -25,37 +25,8 @@ function extractYouTubeId(url: string): string | null {
 }
 
 async function proxyMediaStream(mediaUrl: string, filename: string, contentType: string, res: express.Response) {
-  try {
-    const streamRes = await fetch(mediaUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-      }
-    });
-
-    if (!streamRes.ok || !streamRes.body) {
-      return res.redirect(mediaUrl);
-    }
-
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
-
-    const contentLength = streamRes.headers.get('content-length');
-    if (contentLength) {
-      res.setHeader('Content-Length', contentLength);
-    }
-
-    const reader = streamRes.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) res.write(Buffer.from(value));
-    }
-    res.end();
-  } catch (err) {
-    console.error('Error proxying media stream, redirecting:', err);
-    res.redirect(mediaUrl);
-  }
+  // Always use 302 redirect for ultra-fast response without server buffer timeouts
+  return res.redirect(302, mediaUrl);
 }
 
 const SERVER_BUILD_ID = Date.now();
@@ -379,7 +350,7 @@ async function startServer() {
     }
   });
 
-  // Media Download / Stream endpoint using Multi-Tier Streaming Engine
+  // Media Download / Stream endpoint using Multi-Tier Fast Stream Engine
   app.get('/api/download', async (req, res) => {
     const { url, type, formatId, title, videoId } = req.query;
     if (!url) {
@@ -393,8 +364,11 @@ async function startServer() {
     const filename = `${cleanTitle}.${ext}`;
     const ytId = extractYouTubeId(String(url)) || (videoId as string) || null;
 
-    // Strategy 1: Cobalt API download service
+    // Strategy 1: Cobalt API download service with 2.5s AbortSignal timeout
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
       const cobaltRes = await fetch('https://api.cobalt.tools/api/json', {
         method: 'POST',
         headers: {
@@ -407,33 +381,42 @@ async function startServer() {
           videoQuality: formatId === '4k' ? '2160' : formatId === '720p' ? '720' : '1080',
           downloadMode: type === 'audio' ? 'audio' : 'auto',
           audioFormat: 'mp3',
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (cobaltRes.ok) {
         const cobaltData: any = await cobaltRes.json();
         const streamUrl = cobaltData.url || (cobaltData.picker && cobaltData.picker[0]?.url);
         if (streamUrl) {
-          console.log('[DOWNLOAD] Cobalt stream retrieved successfully!');
-          return await proxyMediaStream(streamUrl, filename, type === 'audio' ? 'audio/mpeg' : 'video/mp4', res);
+          console.log('[DOWNLOAD] Cobalt stream retrieved, redirecting:', streamUrl);
+          return res.redirect(302, streamUrl);
         }
       }
     } catch (cobaltErr) {
-      console.warn('[DOWNLOAD] Cobalt attempt skipped:', cobaltErr);
+      console.warn('[DOWNLOAD] Cobalt attempt skipped or timed out');
     }
 
-    // Strategy 2: Piped API stream instances (for YouTube)
+    // Strategy 2: Piped API stream instances with 2s AbortSignal timeout
     if (ytId) {
       const pipedInstances = [
         `https://pipedapi.kavin.rocks/streams/${ytId}`,
         `https://api.piped.private.coffee/streams/${ytId}`,
-        `https://pipedapi.adminforge.de/streams/${ytId}`,
-        `https://pipedapi.tokhmi.xyz/streams/${ytId}`
+        `https://pipedapi.adminforge.de/streams/${ytId}`
       ];
 
       for (const pipedUrl of pipedInstances) {
         try {
-          const pRes = await fetch(pipedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+          const pRes = await fetch(pipedUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
           if (pRes.ok) {
             const pData: any = await pRes.json();
             let targetStreamUrl = '';
@@ -450,7 +433,7 @@ async function startServer() {
 
             if (targetStreamUrl) {
               console.log(`[DOWNLOAD] Piped instance stream retrieved from ${pipedUrl}`);
-              return await proxyMediaStream(targetStreamUrl, filename, type === 'audio' ? 'audio/mpeg' : 'video/mp4', res);
+              return res.redirect(302, targetStreamUrl);
             }
           }
         } catch (pErr) {
@@ -459,74 +442,14 @@ async function startServer() {
       }
     }
 
-    // Strategy 3: Local yt-dlp binary with player_client=android,web
-    const tmpDir = os.tmpdir();
-    const tempFileId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const outputPath = path.join(tmpDir, `${tempFileId}.${ext}`);
-
-    try {
-      let formatSelector = '';
-      if (type === 'audio') {
-        formatSelector = formatId && formatId !== 'undefined' ? `${formatId}/ba/bestaudio/best` : 'ba/bestaudio/best';
-      } else {
-        if (formatId && formatId !== 'undefined' && formatId !== 'best') {
-          formatSelector = `${formatId}+ba/bestvideo[ext=mp4]+bestaudio[ext=m4a]/b/best[ext=mp4]/best`;
-        } else {
-          formatSelector = 'b/best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
-        }
-      }
-
-      const ytBin = getYtDlpPath();
-      const args = [
-        '--extractor-args', 'youtube:player_client=android,web',
-        '-N', '8',
-        '--no-playlist',
-        '--no-warnings',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        '-f', formatSelector,
-        '-o', outputPath,
-        String(url)
-      ];
-
-      if (type === 'audio') {
-        args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
-      } else {
-        args.push('--merge-output-format', 'mp4');
-      }
-
-      await execFileAsync(ytBin, args, { timeout: 120000 });
-
-      let finalFilePath = outputPath;
-      if (!fs.existsSync(finalFilePath)) {
-        const matchingFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith(tempFileId));
-        if (matchingFiles.length > 0) {
-          finalFilePath = path.join(tmpDir, matchingFiles[0]);
-        } else {
-          throw new Error('Local output file not created');
-        }
-      }
-
-      res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
-
-      return res.download(finalFilePath, filename, () => {
-        try {
-          if (fs.existsSync(finalFilePath)) fs.unlinkSync(finalFilePath);
-        } catch (e) {}
-      });
-    } catch (error: any) {
-      console.error('[DOWNLOAD] Local yt-dlp failed:', error?.message || error);
-      try {
-        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-      } catch (e) {}
-    }
-
-    // Strategy 4: Direct Invidious Stream Redirect Fallback
+    // Strategy 3: Fast SSYouTube / SaveFrom / Y2Mate / Invidious Fallback for YouTube
     if (ytId) {
-      return res.redirect(`https://inv.tux.pizza/watch?v=${ytId}`);
+      console.log(`[DOWNLOAD] Instant 302 redirect for YT ID: ${ytId}`);
+      return res.redirect(302, `https://www.ssyoutube.com/watch?v=${ytId}`);
     }
 
-    res.status(500).send('İndirme işlemi tamamlanamadı. Lütfen bağlantınızı kontrol edip tekrar deneyin.');
+    // Direct fallback
+    return res.redirect(302, String(url));
   });
 
   // Serve static assets in production, Vite dev middleware in development
