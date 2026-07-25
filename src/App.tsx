@@ -15,6 +15,7 @@ import { Footer } from './components/Footer';
 import { ToastContainer } from './components/ToastContainer';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { UpdateNotification } from './components/UpdateNotification';
+import { DiagnosticConsole } from './components/DiagnosticConsole';
 
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
@@ -27,7 +28,7 @@ import {
   Announcement
 } from './types';
 import { mockSampleMedia, mockUserProfile } from './data/sampleData';
-import { ShieldAlert, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, RefreshCw, AlertTriangle, Terminal } from 'lucide-react';
 
 export default function App() {
   const [lang, setLang] = useState<Language>('tr');
@@ -46,6 +47,9 @@ export default function App() {
   );
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [activeNav, setActiveNav] = useState('hero');
+  const [lastAnalyzedUrl, setLastAnalyzedUrl] = useState<string>('');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [diagnosticModalOpen, setDiagnosticModalOpen] = useState(false);
 
   // Modals state
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -106,6 +110,8 @@ export default function App() {
 
   const handleAnalyzeUrl = async (url: string) => {
     setIsAnalyzing(true);
+    setAnalysisError(null);
+    setLastAnalyzedUrl(url);
 
     try {
       const response = await fetch('/api/analyze', {
@@ -130,7 +136,9 @@ export default function App() {
         }
       }, 100);
     } catch (error) {
-      addToast('error', 'Analiz Hatası', 'Sunucu ile bağlantı kurulamadı veya geçersiz bir URL girildi.');
+      const errMsg = 'YouTube sunucu IP doğrulaması engeline takıldı veya ağ kısıtlaması yaşandı.';
+      setAnalysisError(errMsg);
+      addToast('error', 'Analiz Hatası', errMsg);
     } finally {
       setIsAnalyzing(false);
     }
@@ -200,6 +208,30 @@ export default function App() {
           isAnalyzing={isAnalyzing}
         />
 
+        {/* Analysis Error & Diagnostic Banner */}
+        {analysisError && (
+          <div className="max-w-4xl mx-auto px-4 my-6">
+            <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl backdrop-blur-md">
+              <div className="flex items-center gap-3.5">
+                <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-bold block text-sm text-white">YouTube / Platform Bağlantı Uyarısı</span>
+                  <span className="text-xs text-rose-300 leading-relaxed">{analysisError}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setDiagnosticModalOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold text-xs transition-colors flex items-center gap-2 shrink-0 shadow-lg"
+              >
+                <Terminal className="w-4 h-4" />
+                <span>🔍 Ağ Teşhis Konsolunu Çalıştır</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Media Analysis Result */}
         {analyzedMedia && (
           <AnalysisResult
@@ -208,6 +240,7 @@ export default function App() {
             onSaveFavorite={() => {
               addToast('success', 'Favorilere Eklendi', 'Bu bağlantı favori listenize kaydedildi.');
             }}
+            onOpenDiagnosticConsole={() => setDiagnosticModalOpen(true)}
           />
         )}
 
@@ -235,6 +268,7 @@ export default function App() {
         lang={lang}
         onNavClick={handleNavClick}
         onOpenSeoInspector={() => setSeoInspectorOpen(true)}
+        onOpenDiagnosticConsole={() => setDiagnosticModalOpen(true)}
       />
 
       {/* Modals & Overlays */}
@@ -307,7 +341,16 @@ export default function App() {
         isMaintenanceMode={isMaintenanceMode}
       />
 
-      {/* PWA Floating Banner, Update Notification & Toast System */}
+      {/* PWA Floating Banner, Diagnostic Console, Update Notification & Toast System */}
+      <DiagnosticConsole
+        isOpen={diagnosticModalOpen}
+        onClose={() => setDiagnosticModalOpen(false)}
+        onRetryAnalysis={() => {
+          if (lastAnalyzedUrl) {
+            handleAnalyzeUrl(lastAnalyzedUrl);
+          }
+        }}
+      />
       <UpdateNotification />
       <PwaInstallPrompt lang={lang} />
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />

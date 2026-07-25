@@ -40,7 +40,12 @@ function getDefaultYtArgs(): string[] {
 
   const cookiesPath = path.join(process.cwd(), 'cookies.txt');
   if (fs.existsSync(cookiesPath)) {
-    args.push('--cookies', cookiesPath);
+    try {
+      const content = fs.readFileSync(cookiesPath, 'utf-8');
+      if (content.includes('LOGIN_INFO') || content.includes('SID') || content.includes('SAPISID')) {
+        args.push('--cookies', cookiesPath);
+      }
+    } catch (e) {}
   }
 
   return args;
@@ -217,6 +222,158 @@ async function startServer() {
     res.json({ status: 'ok', server: 'MediaStream Full-Stack Engine', railwayReady: true, ytdlpEnabled: true });
   });
 
+  // Network & System Diagnostic Route
+  app.get('/api/diagnose', async (req, res) => {
+    const results: any = {
+      timestamp: new Date().toISOString(),
+      tests: [],
+      overallStatus: 'ok',
+      summary: '',
+      systemInfo: {
+        nodeVersion: process.version,
+        platform: os.platform(),
+        arch: os.arch(),
+        freeMemMb: Math.round(os.freemem() / (1024 * 1024)),
+        totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
+      }
+    };
+
+    // 1. Check yt-dlp binary
+    try {
+      const ytBin = getYtDlpPath();
+      const { stdout } = await execFileAsync(ytBin, ['--version']);
+      results.tests.push({
+        id: 'ytdlp_engine',
+        title: 'İndirme Motoru (yt-dlp)',
+        status: 'success',
+        details: `Sürüm: ${stdout.trim()} (${ytBin})`,
+        badge: stdout.trim()
+      });
+    } catch (err: any) {
+      results.overallStatus = 'error';
+      results.tests.push({
+        id: 'ytdlp_engine',
+        title: 'İndirme Motoru (yt-dlp)',
+        status: 'error',
+        details: `Motor çalıştırılamadı: ${err.message}`,
+        badge: 'Hata'
+      });
+    }
+
+    // 2. Test YouTube oEmbed / Platform API Reachability over IPv4
+    let pingMs = 0;
+    try {
+      const pStart = Date.now();
+      const fetchRes = await fetch('https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&format=json', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        signal: AbortSignal.timeout(5000)
+      });
+      pingMs = Date.now() - pStart;
+
+      if (fetchRes.ok) {
+        results.tests.push({
+          id: 'youtube_oembed',
+          title: 'YouTube Platform Erişimi (oEmbed API)',
+          status: 'success',
+          details: `Erişim Başarılı (HTTP ${fetchRes.status}) - Yanıt Süresi: ${pingMs}ms`,
+          badge: `${pingMs}ms`
+        });
+      } else {
+        results.tests.push({
+          id: 'youtube_oembed',
+          title: 'YouTube Platform Erişimi (oEmbed API)',
+          status: 'warning',
+          details: `Platform HTTP ${fetchRes.status} yanıtı verdi. Geçici IP kısıtlaması olabilir.`,
+          badge: `HTTP ${fetchRes.status}`
+        });
+      }
+    } catch (err: any) {
+      results.overallStatus = 'warning';
+      results.tests.push({
+        id: 'youtube_oembed',
+        title: 'YouTube Platform Erişimi (oEmbed API)',
+        status: 'error',
+        details: `YouTube sunucularına bağlanılamadı: ${err.message}`,
+        badge: 'Erişim Engeli'
+      });
+    }
+
+    // 3. Test IPv6 vs IPv4 Protocol Status
+    try {
+      const dns = await import('dns/promises');
+      const ipv4Addresses = await dns.resolve4('www.youtube.com').catch(() => []);
+      const ipv6Addresses = await dns.resolve6('www.youtube.com').catch(() => []);
+
+      results.tests.push({
+        id: 'dns_ip_protocol',
+        title: 'DNS & IP Protokol Analizi (IPv4 / IPv6)',
+        status: 'success',
+        details: `IPv4: ${ipv4Addresses.length > 0 ? ipv4Addresses.slice(0, 2).join(', ') : 'Yok'} | IPv6: ${ipv6Addresses.length > 0 ? ipv6Addresses.slice(0, 2).join(', ') : 'Devre Dışı / Filtreli'}`,
+        badge: ipv6Addresses.length > 0 ? 'IPv4 + IPv6 Aktif' : 'Zorunlu IPv4 Aktif'
+      });
+    } catch (err: any) {
+      results.tests.push({
+        id: 'dns_ip_protocol',
+        title: 'DNS & IP Protokol Analizi',
+        status: 'warning',
+        details: `DNS sorgusu sırasında uyarı: ${err.message}`,
+        badge: 'DNS Uyarısı'
+      });
+    }
+
+    // 4. Test YouTube Bot & IP Block Verification with yt-dlp
+    try {
+      const ytBin = getYtDlpPath();
+      const pStart = Date.now();
+      const { stdout } = await execFileAsync(ytBin, [
+        '--no-playlist',
+        '--no-warnings',
+        ...getDefaultYtArgs(),
+        '-g',
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      ], { timeout: 12000 });
+
+      const urlCount = stdout.trim().split('\n').filter(Boolean).length;
+      results.tests.push({
+        id: 'stream_extractor',
+        title: 'Medya Akış Çözümleyici (Stream Extractor)',
+        status: 'success',
+        details: `Akış bağlantıları doğrulandı (${urlCount} bağlantı üretildi, ${Date.now() - pStart}ms). IPv4 tünellemesi sorunsuz çalışıyor.`,
+        badge: 'Çözümleyici Aktif'
+      });
+    } catch (err: any) {
+      const errMsg = formatYtDlpErrorMessage(err);
+      const isIpBlocked = errMsg.includes('IP doğrulaması') || err.message?.includes('Sign in to confirm');
+      
+      results.tests.push({
+        id: 'stream_extractor',
+        title: 'Medya Akış Çözümleyici (Stream Extractor)',
+        status: isIpBlocked ? 'warning' : 'error',
+        details: isIpBlocked
+          ? 'YouTube sunucu bazlı geçici IP kısıtlaması uyguluyor. Sistem otomatik zorunlu IPv4 modundadır.'
+          : `Akış ayıklama uyarısı: ${errMsg}`,
+        badge: isIpBlocked ? 'IP Doğrulama Kısıtı' : 'Ayıklama Hatası'
+      });
+    }
+
+    // Determine Recommendation
+    const hasWarnings = results.tests.some((t: any) => t.status === 'warning');
+    const hasErrors = results.tests.some((t: any) => t.status === 'error');
+
+    if (!hasWarnings && !hasErrors) {
+      results.summary = 'Tüm ağ ve indirme motoru kontrolleri başarıyla geçti. Sistem sorunsuz çalışmaktadır.';
+      results.recommendation = 'Herhangi bir bağlantı engeli bulunamadı. Videolarınızı yüksek kalitede indirebilirsiniz.';
+    } else if (hasWarnings) {
+      results.summary = 'Ağ ve sunucu kontrollerinde bazı geçici kısıtlamalar tespit edildi.';
+      results.recommendation = 'YouTube sunucuları geçici IP doğrulaması istiyor olabilir. Sistem IPv4 tünelleme modunda çalışmaktadır. Birkaç saniye bekleyip tekrar deneyebilir veya MP3 Ses seçeneğini tercih edebilirsiniz.';
+    } else {
+      results.summary = 'Ağ veya indirme motoru bağlantısında kritik engel tespit edildi.';
+      results.recommendation = 'Lütfen internet bağlantınızı ve DNS ayarlarınızı kontrol edin. MP3 ses formatını denemek daha yüksek başarı oranı sağlayabilir.';
+    }
+
+    res.json(results);
+  });
+
   // Real Media Analyzer API Route
   app.post('/api/analyze', async (req, res) => {
     try {
@@ -309,8 +466,8 @@ async function startServer() {
           videoOptions,
           audioOptions
         });
-      } catch (ytdlpError) {
-        console.warn('yt-dlp analyze error, fallbacking to YouTube metadata:', ytdlpError);
+      } catch (ytdlpError: any) {
+        console.log(`[ANALYZE] yt-dlp notice for ${url}: ${ytdlpError?.message?.split('\n')[0] || ytdlpError} -> using metadata fallback`);
       }
 
       // Fallback metadata response
@@ -502,11 +659,12 @@ async function startServer() {
         try {
           await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
         } catch (firstErr: any) {
-          console.warn(`[JOB ${jobId}] First download attempt failed, retrying with fallback format...`);
-          // Fallback attempt with generic best format
+          console.warn(`[JOB ${jobId}] First download attempt failed (${firstErr?.message?.split('\n')[0]}), retrying with player client fallback...`);
+          // Fallback attempt with generic best format and mobile web client extractor
           const fallbackFormat = job.type === 'audio' ? 'ba/best' : 'bestvideo+bestaudio/best';
           const fallbackArgs = [
             ...getDefaultYtArgs(),
+            '--extractor-args', 'youtube:player_client=mweb,android',
             '--concurrent-fragments', '3',
             '--ffmpeg-location', '/usr/bin/ffmpeg',
             '-f', fallbackFormat,

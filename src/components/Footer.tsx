@@ -7,9 +7,10 @@ interface FooterProps {
   lang: Language;
   onNavClick: (navId: string) => void;
   onOpenSeoInspector: () => void;
+  onOpenDiagnosticConsole?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspector }) => {
+export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspector, onOpenDiagnosticConsole }) => {
   const t = translations[lang];
 
   return (
@@ -55,6 +56,17 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspe
                   {t.navFaq}
                 </button>
               </li>
+              {onOpenDiagnosticConsole && (
+                <li>
+                  <button
+                    onClick={onOpenDiagnosticConsole}
+                    className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <Terminal className="w-3.5 h-3.5" />
+                    <span>Ağ & Teşhis Konsolu</span>
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

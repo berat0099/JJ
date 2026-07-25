@@ -18,7 +18,8 @@ import {
   X,
   ExternalLink,
   ShieldCheck,
-  RefreshCw
+  RefreshCw,
+  Terminal
 } from 'lucide-react';
 import { MediaAnalysisResult, Language } from '../types';
 import { translations } from '../data/translations';
@@ -28,6 +29,7 @@ interface AnalysisResultProps {
   lang: Language;
   onSaveFavorite?: (media: MediaAnalysisResult) => void;
   isFavorite?: boolean;
+  onOpenDiagnosticConsole?: () => void;
 }
 
 export const AnalysisResult: React.FC<AnalysisResultProps> = ({
@@ -35,6 +37,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
   lang,
   onSaveFavorite,
   isFavorite = false,
+  onOpenDiagnosticConsole,
 }) => {
   const [activeTab, setActiveTab] = useState<'video' | 'audio'>('video');
   const [downloadingFormat, setDownloadingFormat] = useState<string | null>(null);
@@ -627,6 +630,19 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                         <Music className="w-4 h-4" />
                         <span>MP3 Ses Olarak İndirmeyi Dene</span>
                       </button>
+
+                      {onOpenDiagnosticConsole && (
+                        <button
+                          onClick={() => {
+                            setDownloadModal(null);
+                            onOpenDiagnosticConsole();
+                          }}
+                          className="w-full py-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Terminal className="w-4 h-4" />
+                          <span>🔍 Ağ & IP Teşhis Konsolunu Çalıştır</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={() => setDownloadModal(null)}
