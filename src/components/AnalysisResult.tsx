@@ -59,11 +59,13 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
         if (prev >= 100) {
           clearInterval(interval);
           setDownloadingFormat(null);
+          const typeParam = formatStr.toLowerCase().includes('mp3') ? 'audio' : 'video';
+          const downloadApiUrl = `/api/download?url=${encodeURIComponent(media.url)}&type=${typeParam}&title=${encodeURIComponent(media.title)}`;
           setReadyModal({
             format: formatStr,
             resolution: resStr,
             size: sizeStr,
-            downloadUrl: `https://mediastream-cdn.download/v1/file-${media.id}-${resStr.toLowerCase().replace(/[^a-z0-9]/g, '')}.${formatStr.toLowerCase().includes('mp3') ? 'mp3' : 'mp4'}`,
+            downloadUrl: downloadApiUrl,
           });
           return 100;
         }
