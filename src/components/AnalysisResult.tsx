@@ -422,43 +422,11 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                   <a
                     href={readyModal.downloadUrl}
                     download
-                    target="_blank"
-                    rel="noreferrer"
                     className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-extrabold text-sm shadow-xl shadow-emerald-900/40 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
                   >
                     <Download className="w-5 h-5" />
-                    <span>{t.btnDirectDownload} (Hızlı Sunucu)</span>
+                    <span>{t.btnDirectDownload}</span>
                   </a>
-
-                  {/* Alternative Backup Download Mirrors for YouTube */}
-                  {(media.id && media.id.length === 11 || media.url?.includes('youtube') || media.url?.includes('youtu.be')) && (
-                    <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-2 text-left">
-                      <p className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Yedek İndirme Portalları (Alternatif Linkler):</span>
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <a
-                          href={media.id && media.id.length === 11 ? `https://www.ssyoutube.com/watch?v=${media.id}` : media.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="py-2.5 px-3 rounded-xl bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-[11px] font-bold text-blue-200 flex items-center justify-center gap-1.5 transition-all"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
-                          <span>SSYouTube İndir</span>
-                        </a>
-                        <a
-                          href={media.id && media.id.length === 11 ? `https://www.y2mate.com/youtube/${media.id}` : media.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="py-2.5 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-[11px] font-bold text-purple-200 flex items-center justify-center gap-1.5 transition-all"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-purple-400" />
-                          <span>Y2Mate HD/MP3</span>
-                        </a>
-                      </div>
-                    </div>
-                  )}
 
                   <div className="grid grid-cols-2 gap-2">
                     <button

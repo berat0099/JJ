@@ -364,10 +364,14 @@ async function startServer() {
     const filename = `${cleanTitle}.${ext}`;
     const ytId = extractYouTubeId(String(url)) || (videoId as string) || null;
 
-    // Strategy 1: Cobalt API download service with 2.5s AbortSignal timeout
+    // Direct Server Proxying Pipeline - No external redirects!
+    res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+
+    // Strategy 1: Fetch Direct Stream URL via Cobalt API and proxy stream through our server
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
 
       const cobaltRes = await fetch('https://api.cobalt.tools/api/json', {
         method: 'POST',
@@ -390,15 +394,29 @@ async function startServer() {
         const cobaltData: any = await cobaltRes.json();
         const streamUrl = cobaltData.url || (cobaltData.picker && cobaltData.picker[0]?.url);
         if (streamUrl) {
-          console.log('[DOWNLOAD] Cobalt stream retrieved, redirecting:', streamUrl);
-          return res.redirect(302, streamUrl);
+          console.log('[DOWNLOAD] Direct stream URL fetched via Cobalt, proxying to client...');
+          const streamRes = await fetch(streamUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+          });
+          if (streamRes.ok && streamRes.body) {
+            const contentLength = streamRes.headers.get('content-length');
+            if (contentLength) res.setHeader('Content-Length', contentLength);
+
+            const reader = streamRes.body.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value) res.write(Buffer.from(value));
+            }
+            return res.end();
+          }
         }
       }
     } catch (cobaltErr) {
-      console.warn('[DOWNLOAD] Cobalt attempt skipped or timed out');
+      console.warn('[DOWNLOAD] Cobalt server stream proxy skipped:', cobaltErr);
     }
 
-    // Strategy 2: Piped API stream instances with 2s AbortSignal timeout
+    // Strategy 2: Fetch Direct Stream URL via Piped API and proxy through our server
     if (ytId) {
       const pipedInstances = [
         `https://pipedapi.kavin.rocks/streams/${ytId}`,
@@ -409,7 +427,7 @@ async function startServer() {
       for (const pipedUrl of pipedInstances) {
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
 
           const pRes = await fetch(pipedUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -424,32 +442,65 @@ async function startServer() {
               targetStreamUrl = pData.audioStreams[0].url;
             } else if (pData.videoStreams?.length) {
               const withAudio = pData.videoStreams.filter((s: any) => !s.videoOnly);
-              if (withAudio.length > 0) {
-                targetStreamUrl = withAudio[0].url;
-              } else {
-                targetStreamUrl = pData.videoStreams[0].url;
-              }
+              targetStreamUrl = withAudio.length > 0 ? withAudio[0].url : pData.videoStreams[0].url;
             }
 
             if (targetStreamUrl) {
-              console.log(`[DOWNLOAD] Piped instance stream retrieved from ${pipedUrl}`);
-              return res.redirect(302, targetStreamUrl);
+              console.log(`[DOWNLOAD] Direct stream URL fetched via Piped, proxying to client...`);
+              const streamRes = await fetch(targetStreamUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+              });
+              if (streamRes.ok && streamRes.body) {
+                const contentLength = streamRes.headers.get('content-length');
+                if (contentLength) res.setHeader('Content-Length', contentLength);
+
+                const reader = streamRes.body.getReader();
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  if (value) res.write(Buffer.from(value));
+                }
+                return res.end();
+              }
             }
           }
-        } catch (pErr) {
-          // continue
-        }
+        } catch (pErr) {}
       }
     }
 
-    // Strategy 3: Fast SSYouTube / SaveFrom / Y2Mate / Invidious Fallback for YouTube
-    if (ytId) {
-      console.log(`[DOWNLOAD] Instant 302 redirect for YT ID: ${ytId}`);
-      return res.redirect(302, `https://www.ssyoutube.com/watch?v=${ytId}`);
-    }
+    // Strategy 3: Directly stream output from yt-dlp binary
+    try {
+      console.log('[DOWNLOAD] Streaming directly from local yt-dlp binary...');
+      const ytBin = getYtDlpPath();
+      const ytArgs = [
+        '--extractor-args', 'youtube:player_client=android,web',
+        '--no-playlist',
+        '--no-warnings',
+        '-o', '-',
+        String(url)
+      ];
 
-    // Direct fallback
-    return res.redirect(302, String(url));
+      if (type === 'audio') {
+        ytArgs.unshift('-f', 'ba/bestaudio/best');
+      } else {
+        ytArgs.unshift('-f', 'b/best[ext=mp4]/best');
+      }
+
+      const ytProc = spawn(ytBin, ytArgs);
+      ytProc.stdout.pipe(res);
+
+      ytProc.on('error', (err) => {
+        console.error('[DOWNLOAD] yt-dlp spawn error:', err);
+        if (!res.headersSent) {
+          res.status(500).send('İndirme hatası oluştu.');
+        }
+      });
+    } catch (err) {
+      console.error('[DOWNLOAD] Final fallback error:', err);
+      if (!res.headersSent) {
+        res.status(500).send('İndirme işlemi tamamlanamadı.');
+      }
+    }
   });
 
   // Serve static assets in production, Vite dev middleware in development
