@@ -21,6 +21,71 @@ function getYtDlpPath(): string {
   return 'yt-dlp';
 }
 
+function getDefaultYtArgs(): string[] {
+  const args = [
+    '--no-playlist',
+    '--no-warnings',
+    '--geo-bypass',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    '--add-header', 'Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+  ];
+
+  const denoPath = '/root/.deno/bin/deno';
+  if (fs.existsSync(denoPath)) {
+    args.push('--js-runtimes', `deno:${denoPath}`);
+  } else {
+    args.push('--js-runtimes', 'node');
+  }
+
+  const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+  if (fs.existsSync(cookiesPath)) {
+    args.push('--cookies', cookiesPath);
+  }
+
+  return args;
+}
+
+function buildFormatSelector(type: 'video' | 'audio', formatId?: string): string {
+  if (type === 'audio') {
+    if (!formatId || formatId === 'best' || formatId === 'bestaudio' || formatId === 'undefined' || formatId === 'standardaudio') {
+      return 'ba/bestaudio/best';
+    }
+    if (/^\d+$/.test(formatId)) {
+      return `${formatId}/ba/bestaudio/best`;
+    }
+    return 'ba/bestaudio/best';
+  }
+
+  if (!formatId || formatId === 'best' || formatId === 'undefined') {
+    return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+  }
+
+  if (/^\d+p$/i.test(formatId) || formatId.toLowerCase() === '4k') {
+    const height = formatId.toLowerCase() === '4k' ? '2160' : formatId.replace(/\D/g, '');
+    return `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best`;
+  }
+
+  if (/^\d+$/.test(formatId)) {
+    return `${formatId}+bestaudio/bestvideo+bestaudio/best`;
+  }
+
+  return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+}
+
+function formatYtDlpErrorMessage(err: any): string {
+  const msg = String(err?.message || err || '');
+  if (msg.includes('Sign in to confirm you’re not a bot') || msg.includes('not a bot') || msg.includes('429')) {
+    return 'YouTube sunucu IP doğrulaması engeline takıldı. Lütfen birkaç saniye bekleyip tekrar deneyin veya farklı bir kalite seçeneği kullanın.';
+  }
+  if (msg.includes('requested format is not available')) {
+    return 'Seçilen format ve çözünürlük bu videoda mevcut değil. Lütfen farklı bir kalite seçeneği deneyin.';
+  }
+  if (msg.includes('Video unavailable') || msg.includes('Private video')) {
+    return 'Bu video özel, kısıtlanmış veya YouTube üzerinde kaldırılmış durumda.';
+  }
+  return err?.message || 'Medya indirme ve dönüştürme işlemi tamamlanamadı.';
+}
+
 function extractYouTubeId(url: string): string | null {
   if (!url) return null;
   const regExp = /^.*(?:youtu\.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -165,8 +230,7 @@ async function startServer() {
       try {
         const { stdout } = await execFileAsync(ytBin, [
           '--dump-single-json',
-          '--no-warnings',
-          '--no-playlist',
+          ...getDefaultYtArgs(),
           String(url)
         ], { timeout: 25000 });
 
@@ -413,23 +477,10 @@ async function startServer() {
     (async () => {
       try {
         const ytBin = getYtDlpPath();
-        let formatSelector = '';
-
-        if (job.type === 'audio') {
-          formatSelector = (job.formatId && job.formatId !== 'bestaudio' && job.formatId !== 'undefined') 
-            ? `${job.formatId}/ba/bestaudio/best` 
-            : 'ba/bestaudio/best';
-        } else {
-          if (job.formatId && job.formatId !== 'best' && job.formatId !== 'undefined') {
-            formatSelector = `${job.formatId}+bestaudio/bestvideo+bestaudio/best`;
-          } else {
-            formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
-          }
-        }
+        const formatSelector = buildFormatSelector(job.type as 'video' | 'audio', job.formatId);
 
         const ytArgs = [
-          '--no-playlist',
-          '--no-warnings',
+          ...getDefaultYtArgs(),
           '--concurrent-fragments', '5',
           '--ffmpeg-location', '/usr/bin/ffmpeg',
           '-f', formatSelector,
@@ -444,10 +495,31 @@ async function startServer() {
 
         ytArgs.push(job.url);
 
-        console.log(`[JOB ${jobId}] Preparing ${filename}...`);
+        console.log(`[JOB ${jobId}] Preparing ${filename} with selector: ${formatSelector}...`);
         job.progress = 35;
 
-        await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
+        try {
+          await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
+        } catch (firstErr: any) {
+          console.warn(`[JOB ${jobId}] First download attempt failed, retrying with fallback format...`);
+          // Fallback attempt with generic best format
+          const fallbackFormat = job.type === 'audio' ? 'ba/best' : 'bestvideo+bestaudio/best';
+          const fallbackArgs = [
+            ...getDefaultYtArgs(),
+            '--concurrent-fragments', '3',
+            '--ffmpeg-location', '/usr/bin/ffmpeg',
+            '-f', fallbackFormat,
+            '-o', outputPath
+          ];
+          if (job.type === 'audio') {
+            fallbackArgs.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+          } else {
+            fallbackArgs.push('--merge-output-format', 'mp4');
+          }
+          fallbackArgs.push(job.url);
+
+          await execFileAsync(ytBin, fallbackArgs, { timeout: 300000 });
+        }
 
         let finalFilePath = outputPath;
         if (!fs.existsSync(finalFilePath)) {
@@ -455,7 +527,7 @@ async function startServer() {
           if (matchingFiles.length > 0) {
             finalFilePath = path.join(tmpDir, matchingFiles[0]);
           } else {
-            throw new Error('İndirilen dosya diskte oluşturulamadı');
+            throw new Error('İndirilen dosya sunucu diskinde oluşturulamadı');
           }
         }
 
@@ -466,7 +538,7 @@ async function startServer() {
       } catch (err: any) {
         console.error(`[JOB ${jobId}] Preparation failed:`, err?.message || err);
         job.status = 'error';
-        job.error = err?.message || 'Medya hazırlanamadı. Lütfen tekrar deneyin.';
+        job.error = formatYtDlpErrorMessage(err);
       }
     })();
   });
@@ -531,23 +603,10 @@ async function startServer() {
 
     try {
       const ytBin = getYtDlpPath();
-      let formatSelector = '';
-
-      if (type === 'audio') {
-        formatSelector = (formatId && formatId !== 'bestaudio' && formatId !== 'undefined') 
-          ? `${formatId}/ba/bestaudio/best` 
-          : 'ba/bestaudio/best';
-      } else {
-        if (formatId && formatId !== 'best' && formatId !== 'undefined') {
-          formatSelector = `${formatId}+bestaudio/bestvideo+bestaudio/best`;
-        } else {
-          formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
-        }
-      }
+      const formatSelector = buildFormatSelector(type === 'audio' ? 'audio' : 'video', String(formatId || ''));
 
       const ytArgs = [
-        '--no-playlist',
-        '--no-warnings',
+        ...getDefaultYtArgs(),
         '--concurrent-fragments', '5',
         '--ffmpeg-location', '/usr/bin/ffmpeg',
         '-f', formatSelector,
@@ -562,8 +621,27 @@ async function startServer() {
 
       ytArgs.push(String(url));
 
-      console.log(`[DOWNLOAD] Executing yt-dlp for ${filename}...`);
-      await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
+      console.log(`[DOWNLOAD] Executing yt-dlp for ${filename} with selector: ${formatSelector}...`);
+      
+      try {
+        await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
+      } catch (firstErr) {
+        const fallbackFormat = type === 'audio' ? 'ba/best' : 'bestvideo+bestaudio/best';
+        const fallbackArgs = [
+          ...getDefaultYtArgs(),
+          '--concurrent-fragments', '3',
+          '--ffmpeg-location', '/usr/bin/ffmpeg',
+          '-f', fallbackFormat,
+          '-o', outputPath
+        ];
+        if (type === 'audio') {
+          fallbackArgs.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+        } else {
+          fallbackArgs.push('--merge-output-format', 'mp4');
+        }
+        fallbackArgs.push(String(url));
+        await execFileAsync(ytBin, fallbackArgs, { timeout: 300000 });
+      }
 
       let finalFilePath = outputPath;
       if (!fs.existsSync(finalFilePath)) {
