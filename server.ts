@@ -10,9 +10,13 @@ import nodemailer from 'nodemailer';
 const execFileAsync = promisify(execFile);
 
 function getYtDlpPath(): string {
-  const binPath = path.join(process.cwd(), 'bin', 'yt-dlp');
-  if (fs.existsSync(binPath)) {
-    return binPath;
+  const rootBin = path.join(process.cwd(), 'yt-dlp');
+  if (fs.existsSync(rootBin)) {
+    return rootBin;
+  }
+  const subBin = path.join(process.cwd(), 'bin', 'yt-dlp');
+  if (fs.existsSync(subBin)) {
+    return subBin;
   }
   return 'yt-dlp';
 }
@@ -156,73 +160,73 @@ async function startServer() {
       }
 
       const ytId = extractYouTubeId(url);
+      const ytBin = getYtDlpPath();
 
-      // Try running yt-dlp first
       try {
-        const { stdout } = await execFileAsync(getYtDlpPath(), [
-          '--extractor-args', 'youtube:player_client=android,web',
+        const { stdout } = await execFileAsync(ytBin, [
           '--dump-single-json',
           '--no-warnings',
           '--no-playlist',
-          url
-        ], { timeout: 12000 });
+          String(url)
+        ], { timeout: 25000 });
 
         const info = JSON.parse(stdout);
+        const dur = info.duration || 0;
+        const hours = Math.floor(dur / 3600);
+        const mins = Math.floor((dur % 3600) / 60);
+        const secs = Math.floor(dur % 60);
+        const durStr = hours > 0 
+          ? `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+          : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-        const videoOptions: any[] = [];
-        const audioOptions: any[] = [];
-
+        const resMap = new Map<string, any>();
         if (info.formats && Array.isArray(info.formats)) {
-          const videoFormats = info.formats
-            .filter((f: any) => f.vcodec !== 'none')
-            .slice(-4);
+          info.formats.forEach((f: any) => {
+            if (f.height && f.vcodec !== 'none') {
+              const h = f.height;
+              let label = `${h}p`;
+              if (h >= 2160) label = '2160p (4K)';
+              else if (h >= 1440) label = '1440p (2K)';
+              else if (h >= 1080) label = '1080p (FHD)';
+              else if (h >= 720) label = '720p (HD)';
+              else if (h >= 480) label = '480p (SD)';
+              else if (h >= 360) label = '360p (SD)';
 
-          for (const f of videoFormats) {
-            const height = f.height || 720;
-            const resLabel = height >= 2160 ? '2160p (4K)' : height >= 1080 ? '1080p (FHD)' : `${height}p (HD)`;
-            const sizeMb = f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : f.filesize_approx ? `~${(f.filesize_approx / (1024 * 1024)).toFixed(1)} MB` : 'Otomatik';
+              const sizeBytes = f.filesize || f.filesize_approx || (f.tbr && dur ? (f.tbr * 1024 * dur / 8) : 0);
+              const sizeMb = sizeBytes > 0 ? (sizeBytes / (1024 * 1024)).toFixed(1) : null;
 
-            videoOptions.push({
-              format: (f.ext || 'mp4').toUpperCase(),
-              resolution: resLabel,
-              size: sizeMb,
-              fps: f.fps || 30,
-              bitrate: f.tbr ? `${Math.round(f.tbr / 1000)} Mbps` : 'Otomatik',
-              hasAudio: f.acodec !== 'none',
-              quality: height >= 2160 ? '4k' : height >= 1080 ? 'fhd' : 'hd',
-              formatId: f.format_id
-            });
-          }
-
-          const audioFormats = info.formats
-            .filter((f: any) => f.acodec !== 'none' && f.vcodec === 'none')
-            .slice(-2);
-
-          for (const f of audioFormats) {
-            const sizeMb = f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : '~8.5 MB';
-            audioOptions.push({
-              format: 'MP3',
-              bitrate: f.abr ? `${Math.round(f.abr)} kbps` : '320 kbps',
-              size: sizeMb,
-              sampleRate: '48 kHz',
-              quality: 'ultra',
-              formatId: f.format_id
-            });
-          }
+              if (!resMap.has(label) || (f.tbr || 0) > (resMap.get(label).tbr || 0)) {
+                resMap.set(label, {
+                  format: 'MP4',
+                  resolution: label,
+                  height: h,
+                  size: sizeMb ? `${sizeMb} MB` : 'Otomatik',
+                  fps: f.fps || 30,
+                  bitrate: f.vbr ? `${(f.vbr / 1000).toFixed(1)} Mbps` : (f.tbr ? `${(f.tbr / 1000).toFixed(1)} Mbps` : 'Otomatik'),
+                  hasAudio: true,
+                  quality: h >= 2160 ? '4k' : h >= 1080 ? 'fhd' : h >= 720 ? 'hd' : 'sd',
+                  formatId: f.format_id,
+                  tbr: f.tbr || 0
+                });
+              }
+            }
+          });
         }
+
+        const videoOptions = Array.from(resMap.values()).sort((a, b) => b.height - a.height);
 
         if (videoOptions.length === 0) {
           videoOptions.push(
-            { format: 'MP4', resolution: '1080p (FHD)', size: '64.2 MB', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd', formatId: 'best' },
-            { format: 'MP4', resolution: '720p (HD)', size: '32.1 MB', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd', formatId: '720p' }
+            { format: 'MP4', resolution: '2160p (4K)', size: 'Yüksek Kalite', fps: 60, bitrate: '18 Mbps', hasAudio: true, quality: '4k', formatId: 'best' },
+            { format: 'MP4', resolution: '1080p (FHD)', size: 'Full HD', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd', formatId: '1080p' },
+            { format: 'MP4', resolution: '720p (HD)', size: 'Standart HD', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd', formatId: '720p' }
           );
         }
 
-        if (audioOptions.length === 0) {
-          audioOptions.push(
-            { format: 'MP3', bitrate: '320 kbps', size: '8.4 MB', sampleRate: '48 kHz', quality: 'ultra', formatId: 'bestaudio' }
-          );
-        }
+        const audioOptions = [
+          { format: 'MP3', bitrate: '320 kbps', size: dur ? `${((dur * 0.32) / 8).toFixed(1)} MB` : 'Süper Kalite', sampleRate: '48 kHz', quality: 'ultra', formatId: 'bestaudio' },
+          { format: 'MP3', bitrate: '192 kbps', size: dur ? `${((dur * 0.192) / 8).toFixed(1)} MB` : 'Standart', sampleRate: '44.1 kHz', quality: 'standard', formatId: 'standardaudio' }
+        ];
 
         return res.json({
           id: info.id || ytId || `media-${Date.now()}`,
@@ -232,19 +236,19 @@ async function startServer() {
           platformIcon: (info.extractor_key || 'youtube').toLowerCase().includes('youtube') ? 'Youtube' : 'Video',
           author: info.uploader || info.channel || '@creator',
           authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-          duration: info.duration ? `${Math.floor(info.duration / 60)}:${String(Math.floor(info.duration % 60)).padStart(2, '0')}` : '03:45',
-          durationSeconds: info.duration || 225,
+          duration: durStr || '03:45',
+          durationSeconds: dur,
           thumbnail: info.thumbnail || (ytId ? `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=800&auto=format&fit=crop&q=80'),
-          views: info.view_count ? `${(info.view_count / 1000).toFixed(0)}K` : '1.5M',
+          views: info.view_count ? `${(info.view_count / 1000).toFixed(0)}K` : '850K',
           uploadDate: info.upload_date ? `${info.upload_date.slice(0, 4)}-${info.upload_date.slice(4, 6)}-${info.upload_date.slice(6, 8)}` : 'Yeni',
           videoOptions,
           audioOptions
         });
       } catch (ytdlpError) {
-        console.warn('yt-dlp analyze bypassed, trying YouTube oEmbed:', ytdlpError);
+        console.warn('yt-dlp analyze error, fallbacking to YouTube metadata:', ytdlpError);
       }
 
-      // 2. YouTube oEmbed / Piped metadata fallback
+      // Fallback metadata response
       if (ytId) {
         let ytTitle = 'YouTube Video İçeriği';
         let ytAuthor = '@youtube_channel';
@@ -258,9 +262,7 @@ async function startServer() {
             if (oembedData.author_name) ytAuthor = oembedData.author_name;
             if (oembedData.thumbnail_url) ytThumbnail = oembedData.thumbnail_url;
           }
-        } catch (oeErr) {
-          console.warn('oEmbed fetch error:', oeErr);
-        }
+        } catch (oeErr) {}
 
         return res.json({
           id: ytId,
@@ -270,19 +272,19 @@ async function startServer() {
           platformIcon: 'Youtube',
           author: ytAuthor,
           authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-          duration: '04:15',
-          durationSeconds: 255,
+          duration: '30:00',
+          durationSeconds: 1800,
           thumbnail: ytThumbnail,
           views: '850K',
           uploadDate: 'Yeni',
           videoOptions: [
-            { format: 'MP4', resolution: '2160p (4K)', size: '210 MB', fps: 60, bitrate: '18 Mbps', hasAudio: true, quality: '4k', formatId: 'best' },
-            { format: 'MP4', resolution: '1080p (FHD)', size: '58 MB', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd', formatId: '1080p' },
-            { format: 'MP4', resolution: '720p (HD)', size: '28 MB', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd', formatId: '720p' }
+            { format: 'MP4', resolution: '2160p (4K)', size: 'Otomatik', fps: 60, bitrate: '18 Mbps', hasAudio: true, quality: '4k', formatId: 'best' },
+            { format: 'MP4', resolution: '1080p (FHD)', size: 'Otomatik', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd', formatId: '1080p' },
+            { format: 'MP4', resolution: '720p (HD)', size: 'Otomatik', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd', formatId: '720p' }
           ],
           audioOptions: [
-            { format: 'MP3', bitrate: '320 kbps', size: '7.8 MB', sampleRate: '48 kHz', quality: 'ultra', formatId: 'bestaudio' },
-            { format: 'MP3', bitrate: '192 kbps', size: '4.6 MB', sampleRate: '44.1 kHz', quality: 'standard', formatId: 'standardaudio' }
+            { format: 'MP3', bitrate: '320 kbps', size: 'Otomatik', sampleRate: '48 kHz', quality: 'ultra', formatId: 'bestaudio' },
+            { format: 'MP3', bitrate: '192 kbps', size: 'Otomatik', sampleRate: '44.1 kHz', quality: 'standard', formatId: 'standardaudio' }
           ]
         });
       }
@@ -310,16 +312,6 @@ async function startServer() {
         platformIcon = 'Video';
         title = 'TikTok Filigramsız Logosuz HD Video';
         author = '@tiktok_user';
-      } else if (lower.includes('x.com') || lower.includes('twitter')) {
-        platform = 'Twitter / X';
-        platformIcon = 'Twitter';
-        title = 'Twitter / X Medya İçeriği';
-        author = '@x_account';
-      } else if (lower.includes('spotify') || lower.includes('soundcloud')) {
-        platform = 'Ses Akışı';
-        platformIcon = 'Music';
-        title = 'Yüksek Kalite MP3 & Podcast Ses Kaydı';
-        author = '@podcast_channel';
       }
 
       res.json({
@@ -330,19 +322,19 @@ async function startServer() {
         platformIcon,
         author,
         authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-        duration: '03:45',
-        durationSeconds: 225,
+        duration: '30:00',
+        durationSeconds: 1800,
         thumbnail,
         views: '1.5M',
         uploadDate: 'Yeni',
         videoOptions: [
-          { format: 'MP4', resolution: '2160p (4K)', size: '240.5 MB', fps: 60, bitrate: '18 Mbps', hasAudio: true, quality: '4k' },
-          { format: 'MP4', resolution: '1080p (FHD)', size: '64.2 MB', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd' },
-          { format: 'MP4', resolution: '720p (HD)', size: '32.1 MB', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd' },
+          { format: 'MP4', resolution: '2160p (4K)', size: 'Otomatik', fps: 60, bitrate: '18 Mbps', hasAudio: true, quality: '4k' },
+          { format: 'MP4', resolution: '1080p (FHD)', size: 'Otomatik', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd' },
+          { format: 'MP4', resolution: '720p (HD)', size: 'Otomatik', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd' },
         ],
         audioOptions: [
-          { format: 'MP3', bitrate: '320 kbps', size: '8.4 MB', sampleRate: '48 kHz', quality: 'ultra' },
-          { format: 'MP3', bitrate: '192 kbps', size: '5.1 MB', sampleRate: '44.1 kHz', quality: 'standard' },
+          { format: 'MP3', bitrate: '320 kbps', size: 'Otomatik', sampleRate: '48 kHz', quality: 'ultra' },
+          { format: 'MP3', bitrate: '192 kbps', size: 'Otomatik', sampleRate: '44.1 kHz', quality: 'standard' },
         ]
       });
     } catch (err) {
@@ -350,9 +342,9 @@ async function startServer() {
     }
   });
 
-  // Media Download / Stream endpoint using Multi-Tier Fast Stream Engine
+  // Direct High-Speed Video/Audio Downloader & Merger
   app.get('/api/download', async (req, res) => {
-    const { url, type, formatId, title, videoId } = req.query;
+    const { url, type, formatId, title } = req.query;
     if (!url) {
       return res.status(400).send('URL parametresi eksik');
     }
@@ -362,143 +354,73 @@ async function startServer() {
       .slice(0, 60);
     const ext = type === 'audio' ? 'mp3' : 'mp4';
     const filename = `${cleanTitle}.${ext}`;
-    const ytId = extractYouTubeId(String(url)) || (videoId as string) || null;
 
-    // Direct Server Proxying Pipeline - No external redirects!
-    res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    const tmpDir = os.tmpdir();
+    const tempFileId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const outputPath = path.join(tmpDir, `${tempFileId}.${ext}`);
 
-    // Strategy 1: Fetch Direct Stream URL via Cobalt API and proxy stream through our server
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const ytBin = getYtDlpPath();
+      let formatSelector = '';
 
-      const cobaltRes = await fetch('https://api.cobalt.tools/api/json', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        },
-        body: JSON.stringify({
-          url: String(url),
-          videoQuality: formatId === '4k' ? '2160' : formatId === '720p' ? '720' : '1080',
-          downloadMode: type === 'audio' ? 'audio' : 'auto',
-          audioFormat: 'mp3',
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (cobaltRes.ok) {
-        const cobaltData: any = await cobaltRes.json();
-        const streamUrl = cobaltData.url || (cobaltData.picker && cobaltData.picker[0]?.url);
-        if (streamUrl) {
-          console.log('[DOWNLOAD] Direct stream URL fetched via Cobalt, proxying to client...');
-          const streamRes = await fetch(streamUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-          });
-          if (streamRes.ok && streamRes.body) {
-            const contentLength = streamRes.headers.get('content-length');
-            if (contentLength) res.setHeader('Content-Length', contentLength);
-
-            const reader = streamRes.body.getReader();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              if (value) res.write(Buffer.from(value));
-            }
-            return res.end();
-          }
+      if (type === 'audio') {
+        formatSelector = (formatId && formatId !== 'bestaudio' && formatId !== 'undefined') ? `${formatId}/ba/bestaudio/best` : 'ba/bestaudio/best';
+      } else {
+        if (formatId && formatId !== 'best' && formatId !== 'undefined') {
+          formatSelector = `${formatId}+bestaudio/bestvideo+bestaudio/best`;
+        } else {
+          formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best';
         }
       }
-    } catch (cobaltErr) {
-      console.warn('[DOWNLOAD] Cobalt server stream proxy skipped:', cobaltErr);
-    }
 
-    // Strategy 2: Fetch Direct Stream URL via Piped API and proxy through our server
-    if (ytId) {
-      const pipedInstances = [
-        `https://pipedapi.kavin.rocks/streams/${ytId}`,
-        `https://api.piped.private.coffee/streams/${ytId}`,
-        `https://pipedapi.adminforge.de/streams/${ytId}`
-      ];
-
-      for (const pipedUrl of pipedInstances) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-          const pRes = await fetch(pipedUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-
-          if (pRes.ok) {
-            const pData: any = await pRes.json();
-            let targetStreamUrl = '';
-            if (type === 'audio' && pData.audioStreams?.length) {
-              targetStreamUrl = pData.audioStreams[0].url;
-            } else if (pData.videoStreams?.length) {
-              const withAudio = pData.videoStreams.filter((s: any) => !s.videoOnly);
-              targetStreamUrl = withAudio.length > 0 ? withAudio[0].url : pData.videoStreams[0].url;
-            }
-
-            if (targetStreamUrl) {
-              console.log(`[DOWNLOAD] Direct stream URL fetched via Piped, proxying to client...`);
-              const streamRes = await fetch(targetStreamUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-              });
-              if (streamRes.ok && streamRes.body) {
-                const contentLength = streamRes.headers.get('content-length');
-                if (contentLength) res.setHeader('Content-Length', contentLength);
-
-                const reader = streamRes.body.getReader();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  if (value) res.write(Buffer.from(value));
-                }
-                return res.end();
-              }
-            }
-          }
-        } catch (pErr) {}
-      }
-    }
-
-    // Strategy 3: Directly stream output from yt-dlp binary
-    try {
-      console.log('[DOWNLOAD] Streaming directly from local yt-dlp binary...');
-      const ytBin = getYtDlpPath();
       const ytArgs = [
-        '--extractor-args', 'youtube:player_client=android,web',
         '--no-playlist',
         '--no-warnings',
-        '-o', '-',
-        String(url)
+        '--ffmpeg-location', '/usr/bin/ffmpeg',
+        '-f', formatSelector,
+        '-o', outputPath
       ];
 
       if (type === 'audio') {
-        ytArgs.unshift('-f', 'ba/bestaudio/best');
+        ytArgs.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
       } else {
-        ytArgs.unshift('-f', 'b/best[ext=mp4]/best');
+        ytArgs.push('--merge-output-format', 'mp4');
       }
 
-      const ytProc = spawn(ytBin, ytArgs);
-      ytProc.stdout.pipe(res);
+      ytArgs.push(String(url));
 
-      ytProc.on('error', (err) => {
-        console.error('[DOWNLOAD] yt-dlp spawn error:', err);
-        if (!res.headersSent) {
-          res.status(500).send('İndirme hatası oluştu.');
+      console.log('[DOWNLOAD] Executing local yt-dlp & ffmpeg download...');
+      // 5-minute timeout for 30-min / long 4K / 1080p videos
+      await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
+
+      let finalFilePath = outputPath;
+      if (!fs.existsSync(finalFilePath)) {
+        const matchingFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith(tempFileId));
+        if (matchingFiles.length > 0) {
+          finalFilePath = path.join(tmpDir, matchingFiles[0]);
+        } else {
+          throw new Error('İndirilen dosya diskte oluşturulamadı');
         }
+      }
+
+      const stat = fs.statSync(finalFilePath);
+      res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+
+      return res.download(finalFilePath, filename, () => {
+        try {
+          if (fs.existsSync(finalFilePath)) fs.unlinkSync(finalFilePath);
+        } catch (e) {}
       });
-    } catch (err) {
-      console.error('[DOWNLOAD] Final fallback error:', err);
+    } catch (error: any) {
+      console.error('[DOWNLOAD] Local download failed:', error?.message || error);
+      try {
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+      } catch (e) {}
+
       if (!res.headersSent) {
-        res.status(500).send('İndirme işlemi tamamlanamadı.');
+        return res.status(500).send('İndirme işlemi tamamlanamadı. Lütfen tekrar deneyin.');
       }
     }
   });
