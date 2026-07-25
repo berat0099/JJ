@@ -342,7 +342,172 @@ async function startServer() {
     }
   });
 
-  // Direct High-Speed Video/Audio Downloader & Merger
+  // Download Jobs Memory Store
+  interface DownloadJob {
+    id: string;
+    url: string;
+    type: string;
+    formatId?: string;
+    title: string;
+    filename: string;
+    status: 'processing' | 'ready' | 'error';
+    progress: number;
+    filePath?: string;
+    error?: string;
+    createdAt: number;
+  }
+
+  const downloadJobs = new Map<string, DownloadJob>();
+
+  // Cleanup jobs older than 20 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, job] of downloadJobs.entries()) {
+      if (now - job.createdAt > 20 * 60 * 1000) {
+        if (job.filePath && fs.existsSync(job.filePath)) {
+          try { fs.unlinkSync(job.filePath); } catch (e) {}
+        }
+        downloadJobs.delete(id);
+      }
+    }
+  }, 5 * 60 * 1000);
+
+  // 1. POST /api/prepare - Initiate background media download & merge
+  app.post('/api/prepare', async (req, res) => {
+    const { url, type, formatId, title } = req.body || {};
+    if (!url) {
+      return res.status(400).json({ error: 'URL parametresi eksik' });
+    }
+
+    const rawTitle = String(title || 'MediaStream_Video');
+    const safeTitle = rawTitle
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_\- ]/g, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .slice(0, 50) || 'MediaStream_Video';
+
+    const ext = type === 'audio' ? 'mp3' : 'mp4';
+    const filename = `${safeTitle}.${ext}`;
+
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const tmpDir = os.tmpdir();
+    const outputPath = path.join(tmpDir, `${jobId}.${ext}`);
+
+    const job: DownloadJob = {
+      id: jobId,
+      url: String(url),
+      type: type === 'audio' ? 'audio' : 'video',
+      formatId: formatId ? String(formatId) : undefined,
+      title: rawTitle,
+      filename,
+      status: 'processing',
+      progress: 15,
+      createdAt: Date.now()
+    };
+
+    downloadJobs.set(jobId, job);
+    res.json({ jobId, filename });
+
+    // Background processing
+    (async () => {
+      try {
+        const ytBin = getYtDlpPath();
+        let formatSelector = '';
+
+        if (job.type === 'audio') {
+          formatSelector = (job.formatId && job.formatId !== 'bestaudio' && job.formatId !== 'undefined') 
+            ? `${job.formatId}/ba/bestaudio/best` 
+            : 'ba/bestaudio/best';
+        } else {
+          if (job.formatId && job.formatId !== 'best' && job.formatId !== 'undefined') {
+            formatSelector = `${job.formatId}+bestaudio/bestvideo+bestaudio/best`;
+          } else {
+            formatSelector = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+          }
+        }
+
+        const ytArgs = [
+          '--no-playlist',
+          '--no-warnings',
+          '--concurrent-fragments', '5',
+          '--ffmpeg-location', '/usr/bin/ffmpeg',
+          '-f', formatSelector,
+          '-o', outputPath
+        ];
+
+        if (job.type === 'audio') {
+          ytArgs.push('-x', '--audio-format', 'mp3', '--audio-quality', '0');
+        } else {
+          ytArgs.push('--merge-output-format', 'mp4');
+        }
+
+        ytArgs.push(job.url);
+
+        console.log(`[JOB ${jobId}] Preparing ${filename}...`);
+        job.progress = 35;
+
+        await execFileAsync(ytBin, ytArgs, { timeout: 300000 });
+
+        let finalFilePath = outputPath;
+        if (!fs.existsSync(finalFilePath)) {
+          const matchingFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith(jobId));
+          if (matchingFiles.length > 0) {
+            finalFilePath = path.join(tmpDir, matchingFiles[0]);
+          } else {
+            throw new Error('İndirilen dosya diskte oluşturulamadı');
+          }
+        }
+
+        job.status = 'ready';
+        job.progress = 100;
+        job.filePath = finalFilePath;
+        console.log(`[JOB ${jobId}] Ready for instant download: ${filename}`);
+      } catch (err: any) {
+        console.error(`[JOB ${jobId}] Preparation failed:`, err?.message || err);
+        job.status = 'error';
+        job.error = err?.message || 'Medya hazırlanamadı. Lütfen tekrar deneyin.';
+      }
+    })();
+  });
+
+  // 2. GET /api/job-status/:jobId - Poll job status
+  app.get('/api/job-status/:jobId', (req, res) => {
+    const { jobId } = req.params;
+    const job = downloadJobs.get(jobId);
+
+    if (!job) {
+      return res.status(404).json({ error: 'İşlem bulunamadı veya zaman aşımına uğradı' });
+    }
+
+    res.json({
+      id: job.id,
+      status: job.status,
+      progress: job.progress,
+      filename: job.filename,
+      error: job.error,
+      downloadUrl: job.status === 'ready' ? `/api/get-file/${job.id}` : null
+    });
+  });
+
+  // 3. GET /api/get-file/:jobId - Instant direct file download
+  app.get('/api/get-file/:jobId', (req, res) => {
+    const { jobId } = req.params;
+    const job = downloadJobs.get(jobId);
+
+    if (!job || job.status !== 'ready' || !job.filePath || !fs.existsSync(job.filePath)) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(404).send('<h2>Dosya bulunamadı veya süresi doldu. Lütfen tekrar indirmeyi deneyin.</h2>');
+    }
+
+    return res.download(job.filePath, job.filename, (err) => {
+      if (err && !res.headersSent) {
+        console.error(`[JOB ${jobId}] Stream error:`, err);
+      }
+    });
+  });
+
+  // Direct High-Speed Video/Audio Downloader (Fallback)
   app.get('/api/download', async (req, res) => {
     const { url, type, formatId, title } = req.query;
     if (!url) {
