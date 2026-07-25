@@ -177,13 +177,24 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
         throw new Error(data.error || 'Kod doğrulanamadı.');
       }
 
-      // Update local storage user password
+      // Update local storage and Firestore user password
       try {
+        const cleanEmail = email.trim().toLowerCase();
         const existing = JSON.parse(localStorage.getItem('mediastream_users') || '[]');
         const updated = existing.map((u: any) =>
-          u.email === email.trim().toLowerCase() ? { ...u, password: newPasswordInput.trim() } : u
+          u.email === cleanEmail ? { ...u, password: newPasswordInput.trim() } : u
         );
         localStorage.setItem('mediastream_users', JSON.stringify(updated));
+
+        // Update Firestore asynchronously
+        import('../lib/firebase').then(({ db }) => {
+          import('firebase/firestore').then(({ doc, setDoc }) => {
+            setDoc(doc(db, 'users', cleanEmail), {
+              password: newPasswordInput.trim(),
+              updatedAt: new Date().toISOString(),
+            }, { merge: true }).catch(err => console.error('Firestore password update error:', err));
+          });
+        });
       } catch (e) {}
 
       setSuccessMessage('Şifreniz başarıyla güncellendi! Yeni şifrenizle giriş yapabilirsiniz.');
@@ -235,10 +246,21 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
           apiKey: 'ms_live_sk_' + Math.random().toString(36).substring(2, 15),
         };
 
-        // Save registered user
+        // Save registered user to LocalStorage & Firestore
         try {
           const existing = JSON.parse(localStorage.getItem('mediastream_users') || '[]');
           localStorage.setItem('mediastream_users', JSON.stringify([...existing, { ...newUser, password }]));
+
+          // Save to Firestore asynchronously
+          import('../lib/firebase').then(({ db }) => {
+            import('firebase/firestore').then(({ doc, setDoc }) => {
+              setDoc(doc(db, 'users', cleanEmail), {
+                ...newUser,
+                password,
+                createdAt: new Date().toISOString(),
+              }, { merge: true }).catch(err => console.error('Firestore user save error:', err));
+            });
+          });
         } catch (e) {
           console.error(e);
         }

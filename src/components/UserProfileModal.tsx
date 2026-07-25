@@ -14,7 +14,8 @@ import {
   Check,
   Zap,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  LogOut
 } from 'lucide-react';
 import { UserProfile, DownloadHistoryItem, FavoriteItem, Language } from '../types';
 import { translations } from '../data/translations';
@@ -24,6 +25,7 @@ interface UserProfileModalProps {
   onClose: () => void;
   user: UserProfile;
   lang: Language;
+  onLogout?: () => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
@@ -31,6 +33,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onClose,
   user,
   lang,
+  onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'history' | 'favorites' | 'notifications' | 'api'>('profile');
   const [copiedKey, setCopiedKey] = useState(false);
@@ -126,6 +129,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <span className="text-[10px] text-slate-400">Üyelik: {user.joinedDate}</span>
             </div>
           </div>
+          {onLogout && (
+            <button
+              onClick={() => {
+                onClose();
+                onLogout();
+              }}
+              className="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 hover:scale-105"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Çıkış Yap</span>
+            </button>
+          )}
         </div>
 
         {/* Tab Headers */}

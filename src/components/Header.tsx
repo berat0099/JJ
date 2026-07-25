@@ -339,16 +339,28 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 {user ? (
-                  <button
-                    onClick={() => {
-                      onOpenProfile();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold flex items-center justify-center gap-2"
-                  >
-                    <User className="w-4 h-4" />
-                    <span>{t.navProfile} ({user.name})</span>
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        onOpenProfile();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <User className="w-4 h-4" />
+                      <span>{t.navProfile} ({user.name})</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        onLogout();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>{t.navLogout || 'Çıkış Yap'}</span>
+                    </button>
+                  </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <button

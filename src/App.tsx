@@ -260,6 +260,15 @@ export default function App() {
           onClose={() => setProfileModalOpen(false)}
           user={user}
           lang={lang}
+          onLogout={() => {
+            setUser(null);
+            try {
+              localStorage.removeItem('mediastream_active_user');
+            } catch (e) {
+              console.error(e);
+            }
+            addToast('info', 'Çıkış Yapıldı', 'Hesabınızdan güvenle çıkış yaptınız.');
+          }}
         />
       )}
 
