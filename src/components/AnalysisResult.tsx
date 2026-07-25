@@ -50,9 +50,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
 
   const t = translations[lang];
 
-  const handleStartDownload = (formatStr: string, resStr: string, sizeStr: string) => {
+  const handleStartDownload = (formatStr: string, resStr: string, sizeStr: string, formatId?: string) => {
     setDownloadingFormat(`${formatStr}-${resStr}`);
-    setDownloadProgress(10);
+    setDownloadProgress(35);
 
     const interval = setInterval(() => {
       setDownloadProgress((prev) => {
@@ -60,7 +60,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
           clearInterval(interval);
           setDownloadingFormat(null);
           const typeParam = formatStr.toLowerCase().includes('mp3') ? 'audio' : 'video';
-          const downloadApiUrl = `/api/download?url=${encodeURIComponent(media.url)}&type=${typeParam}&title=${encodeURIComponent(media.title)}`;
+          let downloadApiUrl = `/api/download?url=${encodeURIComponent(media.url)}&type=${typeParam}&title=${encodeURIComponent(media.title)}`;
+          if (formatId) {
+            downloadApiUrl += `&formatId=${encodeURIComponent(formatId)}`;
+          }
           setReadyModal({
             format: formatStr,
             resolution: resStr,
@@ -69,9 +72,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
           });
           return 100;
         }
-        return prev + Math.floor(Math.random() * 25) + 15;
+        return prev + 35;
       });
-    }, 250);
+    }, 100);
   };
 
   const handleCopy = (text: string) => {
@@ -275,7 +278,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                               </div>
                             ) : (
                               <button
-                                onClick={() => handleStartDownload(opt.format, opt.resolution, opt.size)}
+                                onClick={() => handleStartDownload(opt.format, opt.resolution, opt.size, opt.formatId)}
                                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold text-xs shadow-md shadow-purple-900/30 transition-all hover:scale-105 flex items-center gap-1.5 ml-auto"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -343,7 +346,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                               </div>
                             ) : (
                               <button
-                                onClick={() => handleStartDownload(opt.format, opt.bitrate, opt.size)}
+                                onClick={() => handleStartDownload(opt.format, opt.bitrate, opt.size, opt.formatId)}
                                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs shadow-md shadow-purple-900/30 transition-all hover:scale-105 flex items-center gap-1.5 ml-auto"
                               >
                                 <Download className="w-3.5 h-3.5" />

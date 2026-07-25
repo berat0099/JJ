@@ -155,11 +155,15 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Admin Panel Quick Access */}
             <button
               onClick={onOpenAdmin}
-              className="px-3 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-xs font-semibold text-purple-300 flex items-center gap-1.5 transition-all hover:shadow-lg hover:shadow-purple-900/40"
-              title="Admin Kontrol Paneli"
+              className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all hover:shadow-lg ${
+                user?.role === 'admin'
+                  ? 'bg-purple-600/20 border-purple-500/50 text-purple-300 hover:bg-purple-600/30 shadow-purple-900/40'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+              title="Admin Kontrol Paneli (Gizli / Korumalı)"
             >
               <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
-              <span>{t.navAdmin}</span>
+              <span>{user?.role === 'admin' ? '👑 ' + t.navAdmin : '🔒 Yönetici Girişi'}</span>
             </button>
 
             {/* User Account / Auth */}

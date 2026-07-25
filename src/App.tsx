@@ -15,6 +15,8 @@ import { Footer } from './components/Footer';
 import { ToastContainer } from './components/ToastContainer';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { db } from './lib/firebase';
 import {
   Language,
   ThemeMode,
@@ -29,7 +31,14 @@ import { ShieldAlert, RefreshCw, AlertTriangle } from 'lucide-react';
 export default function App() {
   const [lang, setLang] = useState<Language>('tr');
   const [theme, setTheme] = useState<ThemeMode>('dark');
-  const [user, setUser] = useState<UserProfile | null>(mockUserProfile);
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('mediastream_active_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [analyzedMedia, setAnalyzedMedia] = useState<MediaAnalysisResult | null>(
     mockSampleMedia.youtube
@@ -51,6 +60,34 @@ export default function App() {
     type: 'info',
     active: true,
   });
+
+  // Real-time Firestore synchronization for Admin settings & announcements
+  React.useEffect(() => {
+    try {
+      const settingsRef = doc(db, 'settings', 'general');
+      const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.isMaintenanceMode === 'boolean') {
+            setIsMaintenanceMode(data.isMaintenanceMode);
+          }
+          if (data.announcementText !== undefined) {
+            setAnnouncement({
+              id: 'ann-1',
+              title: data.announcementText || '',
+              type: 'info',
+              active: !!data.announcementActive,
+            });
+          }
+        }
+      }, (error) => {
+        console.warn('Firestore onSnapshot error:', error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -142,6 +179,11 @@ export default function App() {
         onOpenAdmin={() => setAdminModalOpen(true)}
         onLogout={() => {
           setUser(null);
+          try {
+            localStorage.removeItem('mediastream_active_user');
+          } catch (e) {
+            console.error(e);
+          }
           addToast('info', 'Çıkış Yapıldı', 'Hesabınızdan güvenle çıkış yaptınız.');
         }}
         activeNav={activeNav}
@@ -205,6 +247,11 @@ export default function App() {
         lang={lang}
         onLoginSuccess={(newUser) => {
           setUser(newUser);
+          try {
+            localStorage.setItem('mediastream_active_user', JSON.stringify(newUser));
+          } catch (e) {
+            console.error(e);
+          }
           addToast('success', 'Hoş Geldiniz!', `${newUser.name} olarak başarıyla giriş yaptınız.`);
         }}
       />
@@ -222,13 +269,33 @@ export default function App() {
         isOpen={adminModalOpen}
         onClose={() => setAdminModalOpen(false)}
         lang={lang}
-        onUpdateAnnouncement={(ann) => {
+        user={user}
+        onUpdateAnnouncement={async (ann) => {
           setAnnouncement(ann);
-          addToast('success', 'Duyuru Güncellendi', 'Duyuru bandı canlıya alındı.');
+          try {
+            await setDoc(doc(db, 'settings', 'general'), {
+              announcementText: ann.title,
+              announcementActive: ann.active,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+            addToast('success', 'Duyuru Canlıya Alındı', 'Duyuru tüm kullanıcıların ekranında anlık güncellendi.');
+          } catch (e) {
+            console.error(e);
+            addToast('success', 'Duyuru Güncellendi', 'Duyuru yerel olarak yayına alındı.');
+          }
         }}
-        onToggleMaintenanceMode={(val) => {
+        onToggleMaintenanceMode={async (val) => {
           setIsMaintenanceMode(val);
-          addToast('warning', 'Bakım Modu Toggled', `Bakım modu ${val ? 'aktif edildi' : 'kapatıldı'}.`);
+          try {
+            await setDoc(doc(db, 'settings', 'general'), {
+              isMaintenanceMode: val,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+            addToast('warning', 'Bakım Modu Değiştirildi', `Bakım modu ${val ? 'AKTİF edildi' : 'KAPATILDI'}. Tüm ziyaretçilerin ekranına anlık yansıdı.`);
+          } catch (e) {
+            console.error(e);
+            addToast('warning', 'Bakım Modu Değiştirildi', `Bakım modu ${val ? 'aktif edildi' : 'kapatıldı'}.`);
+          }
         }}
         isMaintenanceMode={isMaintenanceMode}
       />

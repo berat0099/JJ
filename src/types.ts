@@ -10,6 +10,7 @@ export interface VideoResolutionOption {
   bitrate: string;
   hasAudio: boolean;
   quality: 'sd' | 'hd' | 'fhd' | '2k' | '4k';
+  formatId?: string;
 }
 
 export interface AudioBitrateOption {
@@ -18,6 +19,7 @@ export interface AudioBitrateOption {
   size: string;
   sampleRate: string;
   quality: 'standard' | 'high' | 'ultra';
+  formatId?: string;
 }
 
 export interface MediaAnalysisResult {

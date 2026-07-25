@@ -22,14 +22,17 @@ import {
   RefreshCw,
   Power
 } from 'lucide-react';
-import { AdminStats, Announcement, Language } from '../types';
+import { AdminStats, Announcement, Language, UserProfile } from '../types';
 import { mockAdminStats } from '../data/sampleData';
 import { translations } from '../data/translations';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
   onClose: () => void;
   lang: Language;
+  user?: UserProfile | null;
   onUpdateAnnouncement: (announcement: Announcement) => void;
   onToggleMaintenanceMode: (enabled: boolean) => void;
   isMaintenanceMode: boolean;
@@ -39,6 +42,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   isOpen,
   onClose,
   lang,
+  user,
   onUpdateAnnouncement,
   onToggleMaintenanceMode,
   isMaintenanceMode,
@@ -47,11 +51,55 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     'dashboard' | 'announcement' | 'users' | 'api' | 'seo' | 'settings' | 'logs'
   >('dashboard');
 
+  const [isUnlocked, setIsUnlocked] = useState(user?.role === 'admin');
+  const [adminPin, setAdminPin] = useState('');
+  const [pinError, setPinError] = useState(false);
+
   const [stats, setStats] = useState<AdminStats>(mockAdminStats);
   const [announcementText, setAnnouncementText] = useState(
     '🔥 MediaStream v2.4 Yayımlandı: 4K 60FPS İndirme Altyapısı Hızlandırıldı!'
   );
   const [announcementActive, setAnnouncementActive] = useState(true);
+
+  // Sync unlock state with user role changes
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      setIsUnlocked(true);
+    }
+  }, [user]);
+
+  // Sync state from Firestore when available
+  useEffect(() => {
+    try {
+      const settingsRef = doc(db, 'settings', 'general');
+      const unsubscribe = onSnapshot(settingsRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.announcementText !== undefined) {
+            setAnnouncementText(data.announcementText);
+          }
+          if (typeof data.announcementActive === 'boolean') {
+            setAnnouncementActive(data.announcementActive);
+          }
+        }
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const handleVerifyAdminPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinError(false);
+    const validKeys = ['berat123', 'admin123', 'berat001999', 'admin'];
+    if (validKeys.includes(adminPin.trim().toLowerCase()) || user?.role === 'admin') {
+      setIsUnlocked(true);
+      setAdminPin('');
+    } else {
+      setPinError(true);
+    }
+  };
 
   // Live Logs Simulation State
   const [logs, setLogs] = useState<string[]>([
@@ -94,24 +142,78 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         </button>
 
         {/* Admin Header Title */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-900/50">
-            <Shield className="w-5 h-5" />
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-900/50">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white flex items-center gap-2">
+                <span>{t.adminDashboard}</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                  SUPERADMIN
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Sistem durumu, duyurular, SEO ve canlı sunucu log yönetimi
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xl font-black text-white flex items-center gap-2">
-              <span>{t.adminDashboard}</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                SUPERADMIN
-              </span>
-            </h3>
-            <p className="text-xs text-slate-400">
-              Sistem durumu, duyurular, SEO ve canlı sunucu log yönetimi
-            </p>
-          </div>
+
+          {isUnlocked && (
+            <button
+              onClick={() => setIsUnlocked(false)}
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              <span>Paneli Kilitle</span>
+            </button>
+          )}
         </div>
 
-        {/* Sidebar Tabs */}
+        {!isUnlocked && user?.role !== 'admin' ? (
+          <div className="py-12 px-4 max-w-md mx-auto text-center space-y-6">
+            <div className="w-16 h-16 rounded-3xl bg-purple-600/20 text-purple-400 border border-purple-500/40 flex items-center justify-center mx-auto shadow-xl shadow-purple-900/30">
+              <Key className="w-8 h-8 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-white">Gizli Yönetici Erişimi</h3>
+              <p className="text-xs text-slate-400 mt-2">
+                Bu kontrol paneli yetkisiz erişimlere karşı kilitlidir. Lütfen admin güvenlik şifrenizi girin.
+              </p>
+            </div>
+
+            <form onSubmit={handleVerifyAdminPin} className="space-y-4">
+              <div>
+                <input
+                  type="password"
+                  required
+                  value={adminPin}
+                  onChange={(e) => {
+                    setAdminPin(e.target.value);
+                    setPinError(false);
+                  }}
+                  placeholder="Yönetici Şifrenizi Girin"
+                  className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-sm text-center text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono tracking-widest"
+                />
+                {pinError && (
+                  <p className="text-xs text-rose-400 font-semibold mt-2">
+                    ⚠️ Hatalı Yönetici Şifresi! Lütfen tekrar deneyin.
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-900/40 transition-all"
+              >
+                Yönetici Panelini Aç
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto space-y-6 pr-1">
+            {/* Sidebar Tabs */}
         <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3 mb-6 text-xs">
           <button
             onClick={() => setActiveTab('dashboard')}
@@ -451,7 +553,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               </div>
             </div>
           )}
-        </div>
+          </div>
+          </div>
+        )}
       </motion.div>
     </div>
   );

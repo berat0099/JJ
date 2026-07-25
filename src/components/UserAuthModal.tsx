@@ -24,31 +24,115 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const t = translations[lang];
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
     setLoading(true);
 
     setTimeout(() => {
       setLoading(false);
-      const mockUser: UserProfile = {
-        id: `usr-${Math.floor(Math.random() * 9000 + 1000)}`,
-        name: name || (email ? email.split('@')[0] : 'Berat Yılmaz'),
-        email: email || 'berat001999@gmail.com',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-        role: 'user',
-        plan: 'Pro Unlimited',
-        joinedDate: 'Bugün',
-        totalDownloads: 1,
-        bandwidthUsed: '0.4 GB',
-        apiKey: 'ms_live_sk_' + Math.random().toString(36).substring(2, 15),
-      };
-      onLoginSuccess(mockUser);
-      onClose();
-    }, 800);
+      const cleanEmail = email.trim().toLowerCase();
+
+      // Check admin credentials or role
+      const isAdminUser = cleanEmail === 'berat001999@gmail.com' || password === 'berat123' || password === 'admin123';
+
+      if (mode === 'register') {
+        if (!name.trim()) {
+          setErrorMessage('Lütfen adınızı ve soyadınızı girin.');
+          return;
+        }
+        if (password.length < 4) {
+          setErrorMessage('Şifreniz en az 4 karakter olmalıdır.');
+          return;
+        }
+
+        const newUser: UserProfile = {
+          id: `usr-${Date.now()}`,
+          name: name.trim(),
+          email: cleanEmail,
+          avatar: isAdminUser
+            ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+            : 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+          role: isAdminUser ? 'admin' : 'user',
+          plan: isAdminUser ? 'Pro Unlimited' : 'Free',
+          joinedDate: 'Bugün',
+          totalDownloads: 0,
+          bandwidthUsed: '0 GB',
+          apiKey: 'ms_live_sk_' + Math.random().toString(36).substring(2, 15),
+        };
+
+        // Save registered user
+        try {
+          const existing = JSON.parse(localStorage.getItem('mediastream_users') || '[]');
+          localStorage.setItem('mediastream_users', JSON.stringify([...existing, { ...newUser, password }]));
+        } catch (e) {
+          console.error(e);
+        }
+
+        onLoginSuccess(newUser);
+        onClose();
+      } else if (mode === 'login') {
+        if (isAdminUser) {
+          const adminUser: UserProfile = {
+            id: 'usr-admin-1',
+            name: name || 'Berat Yılmaz (Admin)',
+            email: cleanEmail || 'berat001999@gmail.com',
+            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+            role: 'admin',
+            plan: 'Pro Unlimited',
+            joinedDate: '15 Mart 2025',
+            totalDownloads: 342,
+            bandwidthUsed: '84.6 GB',
+            apiKey: 'ms_live_sk_9832104928301928409182309',
+          };
+          onLoginSuccess(adminUser);
+          onClose();
+        } else {
+          // Standard login check
+          let matchedUser: UserProfile | null = null;
+          try {
+            const existing = JSON.parse(localStorage.getItem('mediastream_users') || '[]');
+            const found = existing.find((u: any) => u.email === cleanEmail && u.password === password);
+            if (found) {
+              const { password: _, ...profile } = found;
+              matchedUser = profile;
+            }
+          } catch (e) {
+            console.error(e);
+          }
+
+          if (matchedUser) {
+            onLoginSuccess(matchedUser);
+            onClose();
+          } else {
+            // Default login creation for demo if user enters standard details
+            const defaultUser: UserProfile = {
+              id: `usr-${Math.floor(Math.random() * 9000 + 1000)}`,
+              name: cleanEmail.split('@')[0] || 'Kullanıcı',
+              email: cleanEmail,
+              avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+              role: 'user',
+              plan: 'Free',
+              joinedDate: 'Bugün',
+              totalDownloads: 1,
+              bandwidthUsed: '0.1 GB',
+              apiKey: 'ms_live_sk_' + Math.random().toString(36).substring(2, 15),
+            };
+            onLoginSuccess(defaultUser);
+            onClose();
+          }
+        }
+      } else if (mode === 'forgot') {
+        setSuccessMessage('Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.');
+      }
+    }, 600);
   };
 
   return (
@@ -83,6 +167,17 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center gap-2">
+              <span>⚠️ {errorMessage}</span>
+            </div>
+          )}
+          {successMessage && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+              <span>✅ {successMessage}</span>
+            </div>
+          )}
+
           {mode === 'register' && (
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">

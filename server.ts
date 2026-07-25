@@ -188,11 +188,34 @@ async function startServer() {
     res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
 
     if (url) {
-      const args = type === 'audio'
-        ? ['-x', '--audio-format', 'mp3', '-o', '-', String(url)]
-        : ['-f', formatId ? String(formatId) : 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '-o', '-', String(url)];
+      const baseArgs = [
+        '-N', '8',
+        '--buffer-size', '1M',
+        '--no-playlist',
+        '--no-warnings',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      ];
 
-      const ytProc = spawn('yt-dlp', args);
+      let typeArgs: string[] = [];
+      if (type === 'audio') {
+        typeArgs = [
+          '-f', formatId ? String(formatId) : 'ba/b/bestaudio',
+          '-x',
+          '--audio-format', 'mp3',
+          '--audio-quality', '0',
+          '-o', '-',
+          String(url)
+        ];
+      } else {
+        typeArgs = [
+          '-f', formatId ? String(formatId) : 'b[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+          '--merge-output-format', 'mp4',
+          '-o', '-',
+          String(url)
+        ];
+      }
+
+      const ytProc = spawn('yt-dlp', [...baseArgs, ...typeArgs]);
 
       ytProc.stdout.pipe(res);
 

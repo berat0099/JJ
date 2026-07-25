@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "Registered user accounts and roles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "plan": { "type": "string" },
+        "joinedDate": { "type": "string" }
+      },
+      "required": ["email", "name", "role"]
+    },
+    "downloads": {
+      "title": "Downloads",
+      "description": "User download history records",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "platform": { "type": "string" },
+        "format": { "type": "string" },
+        "size": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "title"]
+    },
+    "announcements": {
+      "title": "Announcements",
+      "description": "System admin broadcast messages",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["content", "active"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Global application configuration including maintenance mode and announcements",
+      "type": "object",
+      "properties": {
+        "isMaintenanceMode": { "type": "boolean" },
+        "announcementText": { "type": "string" },
+        "announcementActive": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  }
+}
