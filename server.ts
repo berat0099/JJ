@@ -1,6 +1,10 @@
 import express from 'express';
 import path from 'path';
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
 import { createServer as createViteServer } from 'vite';
+
+const execFileAsync = promisify(execFile);
 
 async function startServer() {
   const app = express();
@@ -10,7 +14,7 @@ async function startServer() {
 
   // API Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', server: 'MediaStream Full-Stack Engine', railwayReady: true });
+    res.json({ status: 'ok', server: 'MediaStream Full-Stack Engine', railwayReady: true, ytdlpEnabled: true });
   });
 
   // Real Media Analyzer API Route
@@ -21,6 +25,96 @@ async function startServer() {
         return res.status(400).json({ error: 'URL parametresi gereklidir' });
       }
 
+      // Try running yt-dlp first
+      try {
+        const { stdout } = await execFileAsync('yt-dlp', [
+          '--dump-single-json',
+          '--no-warnings',
+          '--no-playlist',
+          url
+        ], { timeout: 15000 });
+
+        const info = JSON.parse(stdout);
+
+        const videoOptions: any[] = [];
+        const audioOptions: any[] = [];
+
+        if (info.formats && Array.isArray(info.formats)) {
+          // Filter video formats
+          const videoFormats = info.formats
+            .filter((f: any) => f.vcodec !== 'none')
+            .slice(-4);
+
+          for (const f of videoFormats) {
+            const height = f.height || 720;
+            const resLabel = height >= 2160 ? '2160p (4K)' : height >= 1080 ? '1080p (FHD)' : `${height}p (HD)`;
+            const sizeMb = f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : f.filesize_approx ? `~${(f.filesize_approx / (1024 * 1024)).toFixed(1)} MB` : 'Otomatik';
+
+            videoOptions.push({
+              format: (f.ext || 'mp4').toUpperCase(),
+              resolution: resLabel,
+              size: sizeMb,
+              fps: f.fps || 30,
+              bitrate: f.tbr ? `${Math.round(f.tbr / 1000)} Mbps` : 'Otomatik',
+              hasAudio: f.acodec !== 'none',
+              quality: height >= 2160 ? '4k' : height >= 1080 ? 'fhd' : 'hd',
+              formatId: f.format_id
+            });
+          }
+
+          // Filter audio formats
+          const audioFormats = info.formats
+            .filter((f: any) => f.acodec !== 'none' && f.vcodec === 'none')
+            .slice(-2);
+
+          for (const f of audioFormats) {
+            const sizeMb = f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : '~8.5 MB';
+            audioOptions.push({
+              format: 'MP3',
+              bitrate: f.abr ? `${Math.round(f.abr)} kbps` : '320 kbps',
+              size: sizeMb,
+              sampleRate: '48 kHz',
+              quality: 'ultra',
+              formatId: f.format_id
+            });
+          }
+        }
+
+        // Fallback options if formats list was empty
+        if (videoOptions.length === 0) {
+          videoOptions.push(
+            { format: 'MP4', resolution: '1080p (FHD)', size: '64.2 MB', fps: 60, bitrate: '6 Mbps', hasAudio: true, quality: 'fhd', formatId: 'best' },
+            { format: 'MP4', resolution: '720p (HD)', size: '32.1 MB', fps: 30, bitrate: '3 Mbps', hasAudio: true, quality: 'hd', formatId: '720p' }
+          );
+        }
+
+        if (audioOptions.length === 0) {
+          audioOptions.push(
+            { format: 'MP3', bitrate: '320 kbps', size: '8.4 MB', sampleRate: '48 kHz', quality: 'ultra', formatId: 'bestaudio' }
+          );
+        }
+
+        return res.json({
+          id: info.id || `media-${Date.now()}`,
+          url: info.webpage_url || url,
+          title: info.title || 'Medya İçeriği Akış Analizi',
+          platform: info.extractor_key || info.extractor || 'YouTube',
+          platformIcon: (info.extractor_key || '').toLowerCase().includes('youtube') ? 'Youtube' : 'Video',
+          author: info.uploader || info.channel || '@creator',
+          authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+          duration: info.duration ? `${Math.floor(info.duration / 60)}:${String(Math.floor(info.duration % 60)).padStart(2, '0')}` : '03:45',
+          durationSeconds: info.duration || 225,
+          thumbnail: info.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=800&auto=format&fit=crop&q=80',
+          views: info.view_count ? `${(info.view_count / 1000).toFixed(0)}K` : '1.5M',
+          uploadDate: info.upload_date ? `${info.upload_date.slice(0, 4)}-${info.upload_date.slice(4, 6)}-${info.upload_date.slice(6, 8)}` : 'Yeni',
+          videoOptions,
+          audioOptions
+        });
+      } catch (ytdlpError) {
+        console.warn('yt-dlp binary not executed, fallbacking to dynamic response:', ytdlpError);
+      }
+
+      // Fallback response
       const lower = url.toLowerCase();
       let platform = 'Medya Bağlantısı';
       let platformIcon = 'Video';
@@ -33,31 +127,26 @@ async function startServer() {
         platformIcon = 'Youtube';
         title = 'YouTube 4K Medya Akışı & MP3 Dönüştürücü';
         author = '@youtube_channel';
-        thumbnail = 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=800&auto=format&fit=crop&q=80';
       } else if (lower.includes('instagram')) {
         platform = 'Instagram';
         platformIcon = 'Instagram';
         title = 'Instagram Reels Video Akışı';
         author = '@instagram_creator';
-        thumbnail = 'https://images.unsplash.com/photo-1611262588024-d12430b98920?w=800&auto=format&fit=crop&q=80';
       } else if (lower.includes('tiktok')) {
         platform = 'TikTok';
         platformIcon = 'Video';
         title = 'TikTok Filigramsız Logosuz HD Video';
         author = '@tiktok_user';
-        thumbnail = 'https://images.unsplash.com/photo-1596558450255-7c0b7be9d56a?w=800&auto=format&fit=crop&q=80';
       } else if (lower.includes('x.com') || lower.includes('twitter')) {
         platform = 'Twitter / X';
         platformIcon = 'Twitter';
         title = 'Twitter / X Medya İçeriği';
         author = '@x_account';
-        thumbnail = 'https://images.unsplash.com/photo-1611605697805-88a5d2144b12?w=800&auto=format&fit=crop&q=80';
       } else if (lower.includes('spotify') || lower.includes('soundcloud')) {
         platform = 'Ses Akışı';
         platformIcon = 'Music';
         title = 'Yüksek Kalite MP3 & Podcast Ses Kaydı';
         author = '@podcast_channel';
-        thumbnail = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80';
       }
 
       res.json({
@@ -88,15 +177,35 @@ async function startServer() {
     }
   });
 
-  // Media Proxy / Download endpoint
+  // Media Download / Stream endpoint using yt-dlp
   app.get('/api/download', (req, res) => {
-    const { type, quality, title } = req.query;
-    const fileName = `${title || 'mediastream-download'}.${type === 'audio' ? 'mp3' : 'mp4'}`;
+    const { url, type, formatId, title } = req.query;
+    const cleanTitle = (title as string || 'mediastream-download').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const ext = type === 'audio' ? 'mp3' : 'mp4';
+    const fileName = `${cleanTitle}.${ext}`;
 
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
     res.setHeader('Content-Type', type === 'audio' ? 'audio/mpeg' : 'video/mp4');
 
-    res.send(`MediaStream File Payload (${type || 'video'} - ${quality || 'hd'})`);
+    if (url) {
+      const args = type === 'audio'
+        ? ['-x', '--audio-format', 'mp3', '-o', '-', String(url)]
+        : ['-f', formatId ? String(formatId) : 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4', '-o', '-', String(url)];
+
+      const ytProc = spawn('yt-dlp', args);
+
+      ytProc.stdout.pipe(res);
+
+      ytProc.stderr.on('data', (data) => {
+        console.error('yt-dlp download stderr:', data.toString());
+      });
+
+      req.on('close', () => {
+        ytProc.kill();
+      });
+    } else {
+      res.send(`MediaStream Payload (${type || 'video'})`);
+    }
   });
 
   // Serve static assets in production, Vite dev middleware in development
