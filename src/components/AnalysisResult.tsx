@@ -64,6 +64,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
           if (formatId) {
             downloadApiUrl += `&formatId=${encodeURIComponent(formatId)}`;
           }
+          if (media.id) {
+            downloadApiUrl += `&videoId=${encodeURIComponent(media.id)}`;
+          }
           setReadyModal({
             format: formatStr,
             resolution: resStr,
