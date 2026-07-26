@@ -32,7 +32,12 @@ import {
   DollarSign,
   Tag,
   ArrowUpRight,
-  Sparkles
+  Sparkles,
+  CreditCard,
+  Building2,
+  Check,
+  Clock,
+  AlertCircle
 } from 'lucide-react';
 import { AdminStats, Announcement, Language, UserProfile, PricingSettings } from '../types';
 import { mockAdminStats } from '../data/sampleData';
@@ -60,8 +65,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   isMaintenanceMode,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'announcement' | 'users' | 'api' | 'seo' | 'contact' | 'settings' | 'logs'
+    'dashboard' | 'announcement' | 'users' | 'payments' | 'api' | 'seo' | 'contact' | 'settings' | 'logs'
   >('dashboard');
+
+  const [bankTransfers, setBankTransfers] = useState<any[]>([]);
+  const [cardTransactions, setCardTransactions] = useState<any[]>([]);
 
   const [isUnlocked, setIsUnlocked] = useState(user?.role === 'admin');
   const [adminPin, setAdminPin] = useState('');
@@ -184,7 +192,30 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         });
         setRegisteredUsers(usersList);
         setStats(prev => ({ ...prev, totalUsers: Math.max(usersList.length, prev.totalUsers) }));
-      });
+      }, (err) => console.warn('Users snapshot error:', err));
+
+      // Subscribe to Bank Transfers
+      const bankRef = collection(db, 'bank_transfers');
+      const unsubscribeBank = onSnapshot(bankRef, (snapshot) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        // Sort newest first
+        list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setBankTransfers(list);
+      }, (err) => console.warn('Bank transfers snapshot error:', err));
+
+      // Subscribe to Card Transactions
+      const txnRef = collection(db, 'transactions');
+      const unsubscribeTxn = onSnapshot(txnRef, (snapshot) => {
+        const list: any[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setCardTransactions(list);
+      }, (err) => console.warn('Card transactions snapshot error:', err));
 
       return () => {
         unsubscribeSettings();
@@ -192,11 +223,51 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         unsubscribeContact();
         unsubscribePricing();
         unsubscribeUsers();
+        unsubscribeBank();
+        unsubscribeTxn();
       };
     } catch (e) {
       console.error(e);
     }
   }, []);
+
+  const handleApproveBankTransfer = async (transfer: any) => {
+    if (!confirm(`${transfer.userEmail} kullanıcısının ${transfer.amount} ₺ tutarındaki havale ödemesini onaylayıp Pro Unlimited Premium yapmak istiyor musunuz?`)) return;
+
+    try {
+      await setDoc(doc(db, 'bank_transfers', transfer.id), {
+        status: 'approved',
+        approvedAt: new Date().toISOString()
+      }, { merge: true });
+
+      const cleanEmail = (transfer.userEmail || '').trim().toLowerCase();
+      if (cleanEmail) {
+        await setDoc(doc(db, 'users', cleanEmail), {
+          plan: 'Pro Unlimited',
+          role: 'vip',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+
+      alert(`✅ ${cleanEmail} kullanıcısının Premium üyeliği başarıyla onaylandı ve aktifleştirildi!`);
+    } catch (e: any) {
+      console.error('Havale onay hatası:', e);
+      alert('İşlem gerçekleşirken hata oluştu: ' + e.message);
+    }
+  };
+
+  const handleRejectBankTransfer = async (transferId: string) => {
+    if (!confirm('Bu havale bildirimini reddetmek istediğinize emin misiniz?')) return;
+    try {
+      await setDoc(doc(db, 'bank_transfers', transferId), {
+        status: 'rejected',
+        rejectedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (e: any) {
+      console.error('Havale ret hatası:', e);
+      alert('İşlem gerçekleşirken hata oluştu: ' + e.message);
+    }
+  };
 
   const handleSaveContactSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -509,6 +580,23 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           >
             <Users className="w-3.5 h-3.5" />
             <span>{t.adminUserMgmt}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-colors relative ${
+              activeTab === 'payments'
+                ? 'bg-purple-600 text-white'
+                : 'text-slate-300 hover:bg-white/5'
+            }`}
+          >
+            <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+            <span>Ödemeler & Havale</span>
+            {bankTransfers.filter(b => b.status === 'pending').length > 0 && (
+              <span className="px-1.5 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-black rounded-full animate-pulse">
+                {bankTransfers.filter(b => b.status === 'pending').length}
+              </span>
+            )}
           </button>
 
           <button
@@ -859,6 +947,210 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'payments' && (
+            <div className="space-y-6">
+              {/* Payment Summary Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Kredi/Banka Kartı Kazancı</p>
+                    <p className="text-xl font-black text-emerald-300">
+                      {cardTransactions.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0)} ₺
+                    </p>
+                    <p className="text-[10px] text-emerald-400/80">{cardTransactions.length} Başarılı Kart İşlemi</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-950/60 to-slate-900 border border-amber-500/30 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                    <Clock className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Bekleyen Havaleler</p>
+                    <p className="text-xl font-black text-amber-300">
+                      {bankTransfers.filter(b => b.status === 'pending').length} Adet
+                    </p>
+                    <p className="text-[10px] text-amber-400/80">Onay Bekleyen Bildirim</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-950/60 to-slate-900 border border-purple-500/30 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Onaylanan Havaleler</p>
+                    <p className="text-xl font-black text-purple-300">
+                      {bankTransfers.filter(b => b.status === 'approved').length} Adet
+                    </p>
+                    <p className="text-[10px] text-purple-400/80">Pro Hesaba Yükseltildi</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pending Bank Transfers Section */}
+              <div className="p-5 rounded-2xl bg-slate-900/90 border border-amber-500/30 space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <h4 className="font-extrabold text-white text-sm flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    <span>Bekleyen Havale / EFT Bildirimleri</span>
+                  </h4>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                    {bankTransfers.filter(b => b.status === 'pending').length} Onay Bekliyor
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead>
+                      <tr className="border-b border-white/10 text-slate-400 font-bold">
+                        <th className="pb-2.5">Kullanıcı Email</th>
+                        <th className="pb-2.5">Gönderen Adı</th>
+                        <th className="pb-2.5">Sipariş Kodu</th>
+                        <th className="pb-2.5">Banka & Tutar</th>
+                        <th className="pb-2.5">Tarih</th>
+                        <th className="pb-2.5 text-right">İşlemler</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {bankTransfers
+                        .filter(b => b.status === 'pending')
+                        .map((b) => (
+                          <tr key={b.id} className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 font-semibold text-white">{b.userEmail}</td>
+                            <td className="py-3">{b.senderName}</td>
+                            <td className="py-3 font-mono text-amber-300 font-bold">{b.orderCode}</td>
+                            <td className="py-3">
+                              <span className="font-extrabold text-emerald-400">{b.amount} ₺</span>
+                              <span className="text-[10px] text-slate-400 block">{b.bank}</span>
+                            </td>
+                            <td className="py-3 text-slate-400 text-[11px]">
+                              {b.createdAt ? new Date(b.createdAt).toLocaleString('tr-TR') : '-'}
+                            </td>
+                            <td className="py-3 text-right space-x-2">
+                              <button
+                                onClick={() => handleApproveBankTransfer(b)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-md shadow-emerald-950/40 transition-all inline-flex items-center gap-1"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Onayla & Pro Yap</span>
+                              </button>
+                              <button
+                                onClick={() => handleRejectBankTransfer(b.id)}
+                                className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 font-bold text-xs transition-all inline-flex items-center gap-1"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Reddet</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+
+                      {bankTransfers.filter(b => b.status === 'pending').length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                            🎉 Onay bekleyen herhangi bir havale/EFT ödeme bildirimi bulunmuyor.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* All Transactions Log Section */}
+              <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-4">
+                <h4 className="font-extrabold text-white text-sm flex items-center gap-2 border-b border-white/10 pb-3">
+                  <CreditCard className="w-4 h-4 text-purple-400" />
+                  <span>Tüm Ödeme ve Havale Geçmişi (Canlı Log)</span>
+                </h4>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead>
+                      <tr className="border-b border-white/10 text-slate-400 font-bold">
+                        <th className="pb-2.5">Tarih</th>
+                        <th className="pb-2.5">Kullanıcı Email</th>
+                        <th className="pb-2.5">Ödeme Türü</th>
+                        <th className="pb-2.5">Referans Kodu</th>
+                        <th className="pb-2.5">Tutar</th>
+                        <th className="pb-2.5 text-right">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {/* Kart İşlemleri */}
+                      {cardTransactions.map((c) => (
+                        <tr key={c.id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-2.5 text-slate-400 text-[11px]">
+                            {c.createdAt ? new Date(c.createdAt).toLocaleString('tr-TR') : '-'}
+                          </td>
+                          <td className="py-2.5 font-semibold text-white">{c.userEmail}</td>
+                          <td className="py-2.5">
+                            <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 text-[10px] font-bold border border-blue-500/30">
+                              💳 Kart (3D Secure)
+                            </span>
+                          </td>
+                          <td className="py-2.5 font-mono text-[11px] text-slate-300">{c.transactionId || c.id}</td>
+                          <td className="py-2.5 font-black text-emerald-400">{c.amount} ₺</td>
+                          <td className="py-2.5 text-right">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                              ✅ Tamamlandı
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* Havale / EFT İşlemleri */}
+                      {bankTransfers.map((b) => (
+                        <tr key={b.id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-2.5 text-slate-400 text-[11px]">
+                            {b.createdAt ? new Date(b.createdAt).toLocaleString('tr-TR') : '-'}
+                          </td>
+                          <td className="py-2.5 font-semibold text-white">{b.userEmail}</td>
+                          <td className="py-2.5">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[10px] font-bold border border-purple-500/30">
+                              🏦 Havale / EFT
+                            </span>
+                          </td>
+                          <td className="py-2.5 font-mono text-[11px] text-amber-300">{b.orderCode}</td>
+                          <td className="py-2.5 font-black text-emerald-400">{b.amount} ₺</td>
+                          <td className="py-2.5 text-right">
+                            {b.status === 'approved' && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                                ✅ Onaylandı
+                              </span>
+                            )}
+                            {b.status === 'pending' && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 animate-pulse">
+                                ⏳ Bekliyor
+                              </span>
+                            )}
+                            {b.status === 'rejected' && (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-bold border border-rose-500/30">
+                                ❌ Reddedildi
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+
+                      {cardTransactions.length === 0 && bankTransfers.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                            Henüz kayıtlı bir ödeme veya havale hareketi bulunmamaktadır.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

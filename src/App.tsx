@@ -147,6 +147,40 @@ export default function App() {
     }
   };
 
+  const handleToggleFavorite = (media: MediaAnalysisResult) => {
+    if (!user) {
+      addToast('info', 'Giriş Yapın', 'Bağlantıları favorilerinize eklemek için lütfen giriş yapın.');
+      setAuthMode('login');
+      setAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      const userKey = `mediastream_favorites_${user.id || user.email}`;
+      const existing = JSON.parse(localStorage.getItem(userKey) || '[]');
+      const alreadyFav = existing.some((f: any) => f.url === media.url || f.id === media.id);
+
+      if (alreadyFav) {
+        const filtered = existing.filter((f: any) => f.url !== media.url && f.id !== media.id);
+        localStorage.setItem(userKey, JSON.stringify(filtered));
+        addToast('info', 'Favorilerden Çıkarıldı', 'Bu bağlantı favorilerinizden kaldırıldı.');
+      } else {
+        const newFav = {
+          id: `fav-${Date.now()}`,
+          url: media.url,
+          title: media.title,
+          platform: media.platform,
+          thumbnail: media.thumbnail,
+          addedAt: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
+        };
+        localStorage.setItem(userKey, JSON.stringify([newFav, ...existing]));
+        addToast('success', 'Favorilere Eklendi', 'Bu bağlantı favori listenize kaydedildi.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleNavClick = (navId: string) => {
     setActiveNav(navId);
 
@@ -258,9 +292,7 @@ export default function App() {
             media={analyzedMedia}
             lang={lang}
             user={user}
-            onSaveFavorite={() => {
-              addToast('success', 'Favorilere Eklendi', 'Bu bağlantı favori listenize kaydedildi.');
-            }}
+            onSaveFavorite={handleToggleFavorite}
             onOpenDiagnosticConsole={user?.role === 'admin' ? () => setDiagnosticModalOpen(true) : undefined}
             onOpenPremiumModal={(feat) => {
               setRequiredPremiumFeature(feat);
@@ -374,7 +406,12 @@ export default function App() {
         isOpen={upgradeModalOpen}
         onClose={() => setUpgradeModalOpen(false)}
         requiredFeature={requiredPremiumFeature}
+        lang={lang}
         user={user}
+        onOpenAuth={(mode) => {
+          setAuthMode(mode || 'login');
+          setAuthModalOpen(true);
+        }}
         onUpgradeSuccess={(newPlan) => {
           if (user) {
             const updated = { ...user, plan: newPlan };

@@ -127,6 +127,27 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
               downloadUrl: data.downloadUrl,
               filename: data.filename || filename
             });
+
+            if (user) {
+              try {
+                const userKey = `mediastream_history_${user.id || user.email}`;
+                const existing = JSON.parse(localStorage.getItem(userKey) || '[]');
+                const newHistoryItem = {
+                  id: `h-${Date.now()}`,
+                  title: media.title,
+                  platform: media.platform,
+                  thumbnail: media.thumbnail,
+                  format: formatStr,
+                  quality: resStr,
+                  size: sizeStr,
+                  timestamp: 'Bugün ' + new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+                  downloadUrl: data.downloadUrl || '#'
+                };
+                localStorage.setItem(userKey, JSON.stringify([newHistoryItem, ...existing]));
+              } catch (e) {
+                console.error(e);
+              }
+            }
           } else if (data.status === 'error') {
             clearInterval(pollInterval);
             setDownloadingFormat(null);

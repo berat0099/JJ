@@ -39,55 +39,43 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [copiedKey, setCopiedKey] = useState(false);
   const t = translations[lang];
 
-  // Mock History state
-  const [historyItems, setHistoryItems] = useState<DownloadHistoryItem[]>([
-    {
-      id: 'h-1',
-      title: 'Cyberpunk 2077 - Official 4K HDR Cinematic Showcase',
-      platform: 'YouTube',
-      thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=80',
-      format: 'MP4',
-      quality: '4K 2160p',
-      size: '384 MB',
-      timestamp: 'Bugün 19:42',
-      downloadUrl: '#',
-    },
-    {
-      id: 'h-2',
-      title: 'Swiss Alps Drone Sunset Flight 4K',
-      platform: 'Instagram Reels',
-      thumbnail: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&auto=format&fit=crop&q=80',
-      format: 'MP4',
-      quality: '1080p FHD',
-      size: '28 MB',
-      timestamp: 'Dün 14:10',
-      downloadUrl: '#',
-    },
-    {
-      id: 'h-3',
-      title: 'Top 5 AI Tools in 2026',
-      platform: 'TikTok',
-      thumbnail: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=200&auto=format&fit=crop&q=80',
-      format: 'MP3',
-      quality: '320 kbps HQ',
-      size: '3.2 MB',
-      timestamp: '3 gün önce',
-      downloadUrl: '#',
-    },
-  ]);
+  const userKeyHistory = user ? `mediastream_history_${user.id || user.email}` : null;
+  const userKeyFavorites = user ? `mediastream_favorites_${user.id || user.email}` : null;
 
-  const [favoritesList, setFavoritesList] = useState<FavoriteItem[]>([
-    {
-      id: 'f-1',
-      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      title: 'Cyberpunk 2077 Soundtracks',
-      platform: 'YouTube',
-      thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=200&auto=format&fit=crop&q=80',
-      addedAt: '12 Temmuz 2026',
-    },
-  ]);
+  const [historyItems, setHistoryItems] = useState<DownloadHistoryItem[]>([]);
+  const [favoritesList, setFavoritesList] = useState<FavoriteItem[]>([]);
+
+  React.useEffect(() => {
+    if (user && isOpen) {
+      try {
+        const savedHistory = userKeyHistory ? localStorage.getItem(userKeyHistory) : null;
+        setHistoryItems(savedHistory ? JSON.parse(savedHistory) : []);
+
+        const savedFavs = userKeyFavorites ? localStorage.getItem(userKeyFavorites) : null;
+        setFavoritesList(savedFavs ? JSON.parse(savedFavs) : []);
+      } catch (e) {
+        setHistoryItems([]);
+        setFavoritesList([]);
+      }
+    }
+  }, [user, isOpen, userKeyHistory, userKeyFavorites]);
 
   if (!isOpen) return null;
+
+  const handleClearHistory = () => {
+    setHistoryItems([]);
+    if (userKeyHistory) {
+      localStorage.setItem(userKeyHistory, JSON.stringify([]));
+    }
+  };
+
+  const handleRemoveFavorite = (favId: string) => {
+    const updated = favoritesList.filter((f) => f.id !== favId);
+    setFavoritesList(updated);
+    if (userKeyFavorites) {
+      localStorage.setItem(userKeyFavorites, JSON.stringify(updated));
+    }
+  };
 
   const copyApiKey = () => {
     if (user.apiKey) {
@@ -241,13 +229,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             <div className="space-y-3">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs text-slate-400 font-medium">Son İndirilen Medyalar</span>
-                <button
-                  onClick={() => setHistoryItems([])}
-                  className="text-xs text-rose-400 hover:underline flex items-center gap-1"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{t.clearHistoryBtn}</span>
-                </button>
+                {historyItems.length > 0 && (
+                  <button
+                    onClick={handleClearHistory}
+                    className="text-xs text-rose-400 hover:underline flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t.clearHistoryBtn}</span>
+                  </button>
+                )}
               </div>
 
               {historyItems.length === 0 ? (
@@ -296,7 +286,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <p className="text-[10px] text-slate-400 mt-0.5">{fav.platform} • Eklenme: {fav.addedAt}</p>
                     </div>
                     <button
-                      onClick={() => setFavoritesList(favoritesList.filter((f) => f.id !== fav.id))}
+                      onClick={() => handleRemoveFavorite(fav.id)}
                       className="p-1.5 text-slate-400 hover:text-rose-400"
                     >
                       <Trash2 className="w-4 h-4" />
