@@ -12,10 +12,12 @@ const execFileAsync = promisify(execFile);
 function getYtDlpPath(): string {
   const rootBin = path.join(process.cwd(), 'yt-dlp');
   if (fs.existsSync(rootBin)) {
+    try { fs.chmodSync(rootBin, '755'); } catch (e) {}
     return rootBin;
   }
   const subBin = path.join(process.cwd(), 'bin', 'yt-dlp');
   if (fs.existsSync(subBin)) {
+    try { fs.chmodSync(subBin, '755'); } catch (e) {}
     return subBin;
   }
   return 'yt-dlp';

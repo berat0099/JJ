@@ -10,6 +10,7 @@ import { ApiDocsSection } from './components/ApiDocsSection';
 import { UserAuthModal } from './components/UserAuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
+import { PremiumUpgradeModal } from './components/PremiumUpgradeModal';
 import { SeoSchemaInspector } from './components/SeoSchemaInspector';
 import { Footer } from './components/Footer';
 import { ToastContainer } from './components/ToastContainer';
@@ -57,6 +58,8 @@ export default function App() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [seoInspectorOpen, setSeoInspectorOpen] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [requiredPremiumFeature, setRequiredPremiumFeature] = useState<'4k' | '2k' | '320kbps' | 'general'>('general');
 
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>({
@@ -148,7 +151,9 @@ export default function App() {
     setActiveNav(navId);
 
     if (navId === 'diagnostic') {
-      setDiagnosticModalOpen(true);
+      if (user?.role === 'admin') {
+        setDiagnosticModalOpen(true);
+      }
       return;
     }
 
@@ -234,13 +239,15 @@ export default function App() {
                   <span className="text-xs text-rose-300 leading-relaxed">{analysisError}</span>
                 </div>
               </div>
-              <button
-                onClick={() => setDiagnosticModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold text-xs transition-colors flex items-center gap-2 shrink-0 shadow-lg"
-              >
-                <Terminal className="w-4 h-4" />
-                <span>🔍 Ağ Teşhis Konsolunu Çalıştır</span>
-              </button>
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => setDiagnosticModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 font-bold text-xs transition-colors flex items-center gap-2 shrink-0 shadow-lg"
+                >
+                  <Terminal className="w-4 h-4" />
+                  <span>🔍 Ağ Teşhis Konsolunu Çalıştır</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -250,10 +257,15 @@ export default function App() {
           <AnalysisResult
             media={analyzedMedia}
             lang={lang}
+            user={user}
             onSaveFavorite={() => {
               addToast('success', 'Favorilere Eklendi', 'Bu bağlantı favori listenize kaydedildi.');
             }}
-            onOpenDiagnosticConsole={() => setDiagnosticModalOpen(true)}
+            onOpenDiagnosticConsole={user?.role === 'admin' ? () => setDiagnosticModalOpen(true) : undefined}
+            onOpenPremiumModal={(feat) => {
+              setRequiredPremiumFeature(feat);
+              setUpgradeModalOpen(true);
+            }}
           />
         )}
 
@@ -272,8 +284,8 @@ export default function App() {
         {/* FAQ Section */}
         <FaqSection lang={lang} />
 
-        {/* API Docs Section */}
-        <ApiDocsSection lang={lang} />
+        {/* API Docs Section - ONLY Visible to Admin */}
+        {user?.role === 'admin' && <ApiDocsSection lang={lang} />}
 
         {/* Contact Section */}
         <ContactSection lang={lang} />
@@ -282,9 +294,10 @@ export default function App() {
       {/* Footer */}
       <Footer
         lang={lang}
+        user={user}
         onNavClick={handleNavClick}
         onOpenSeoInspector={() => setSeoInspectorOpen(true)}
-        onOpenDiagnosticConsole={() => setDiagnosticModalOpen(true)}
+        onOpenDiagnosticConsole={user?.role === 'admin' ? () => setDiagnosticModalOpen(true) : undefined}
       />
 
       {/* Modals & Overlays */}
@@ -357,16 +370,37 @@ export default function App() {
         isMaintenanceMode={isMaintenanceMode}
       />
 
-      {/* PWA Floating Banner, Diagnostic Console, Update Notification & Toast System */}
-      <DiagnosticConsole
-        isOpen={diagnosticModalOpen}
-        onClose={() => setDiagnosticModalOpen(false)}
-        onRetryAnalysis={() => {
-          if (lastAnalyzedUrl) {
-            handleAnalyzeUrl(lastAnalyzedUrl);
+      <PremiumUpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        requiredFeature={requiredPremiumFeature}
+        user={user}
+        onUpgradeSuccess={(newPlan) => {
+          if (user) {
+            const updated = { ...user, plan: newPlan };
+            setUser(updated);
+            try {
+              localStorage.setItem('mediastream_active_user', JSON.stringify(updated));
+            } catch (e) {
+              console.error(e);
+            }
           }
+          addToast('success', '👑 Tebrikler! Üyeliğiniz Yükseltildi', `${newPlan} paketine başarıyla geçiş yaptınız! Sınırsız 4K ve 320kbps indirmeler aktif.`);
         }}
       />
+
+      {/* PWA Floating Banner, Diagnostic Console, Update Notification & Toast System */}
+      {user?.role === 'admin' && (
+        <DiagnosticConsole
+          isOpen={diagnosticModalOpen}
+          onClose={() => setDiagnosticModalOpen(false)}
+          onRetryAnalysis={() => {
+            if (lastAnalyzedUrl) {
+              handleAnalyzeUrl(lastAnalyzedUrl);
+            }
+          }}
+        />
+      )}
       <UpdateNotification />
       <PwaInstallPrompt lang={lang} />
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />

@@ -1,17 +1,19 @@
 import React from 'react';
 import { Download, Globe, Heart, Shield, Terminal, Sparkles } from 'lucide-react';
-import { Language } from '../types';
+import { Language, UserProfile } from '../types';
 import { translations } from '../data/translations';
 
 interface FooterProps {
   lang: Language;
+  user?: UserProfile | null;
   onNavClick: (navId: string) => void;
   onOpenSeoInspector: () => void;
   onOpenDiagnosticConsole?: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspector, onOpenDiagnosticConsole }) => {
+export const Footer: React.FC<FooterProps> = ({ lang, user, onNavClick, onOpenSeoInspector, onOpenDiagnosticConsole }) => {
   const t = translations[lang];
+  const isAdmin = user?.role === 'admin';
 
   return (
     <footer className="border-t border-white/10 bg-slate-950 pt-16 pb-12 text-slate-400 text-xs relative overflow-hidden">
@@ -56,7 +58,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onNavClick, onOpenSeoInspe
                   {t.navFaq}
                 </button>
               </li>
-              {onOpenDiagnosticConsole && (
+              {isAdmin && onOpenDiagnosticConsole && (
                 <li>
                   <button
                     onClick={onOpenDiagnosticConsole}

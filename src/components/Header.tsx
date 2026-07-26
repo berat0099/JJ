@@ -360,13 +360,15 @@ export const Header: React.FC<HeaderProps> = ({
                         );
                       })}
 
-                      <button
-                        onClick={() => handleNavSelect('diagnostic')}
-                        className="w-full px-3 py-2.5 rounded-xl text-left text-cyan-300 hover:bg-cyan-500/10 flex items-center gap-2.5 transition-colors font-semibold"
-                      >
-                        <Terminal className="w-4 h-4 text-cyan-400 shrink-0" />
-                        <span>Ağ & Teşhis Konsolu</span>
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleNavSelect('diagnostic')}
+                          className="w-full px-3 py-2.5 rounded-xl text-left text-cyan-300 hover:bg-cyan-500/10 flex items-center gap-2.5 transition-colors font-semibold"
+                        >
+                          <Terminal className="w-4 h-4 text-cyan-400 shrink-0" />
+                          <span>Ağ & Teşhis Konsolu</span>
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -421,13 +423,15 @@ export const Header: React.FC<HeaderProps> = ({
                 );
               })}
 
-              <button
-                onClick={() => handleNavSelect('diagnostic')}
-                className="px-4 py-3 rounded-xl text-left text-sm font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 flex items-center gap-3"
-              >
-                <Terminal className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>Ağ & Teşhis Konsolu</span>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => handleNavSelect('diagnostic')}
+                  className="px-4 py-3 rounded-xl text-left text-sm font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 flex items-center gap-3"
+                >
+                  <Terminal className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Ağ & Teşhis Konsolu</span>
+                </button>
+              )}
 
               <div className="pt-4 border-t border-white/10 flex flex-col gap-2">
                 <button
