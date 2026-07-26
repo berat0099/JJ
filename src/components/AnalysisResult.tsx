@@ -18,6 +18,7 @@ import {
   X,
   ExternalLink,
   ShieldCheck,
+  Globe,
   RefreshCw,
   Terminal,
   Crown
@@ -669,6 +670,18 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({
                         <RefreshCw className="w-4 h-4" />
                         <span>Tekrar Yeniden Dene</span>
                       </button>
+
+                      <a
+                        href={media.url.includes('youtu') 
+                          ? media.url.replace('youtube.com', 'ssyoutube.com').replace('youtu.be/', 'ssyoutube.com/watch?v=')
+                          : media.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 border border-emerald-400/30"
+                      >
+                        <Globe className="w-4 h-4 text-emerald-300" />
+                        <span>🚀 Alternatif Hızlı Sunucudan İndir (SSYouTube)</span>
+                      </a>
 
                       <button
                         onClick={() => {
