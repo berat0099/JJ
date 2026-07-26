@@ -21,7 +21,12 @@ import {
   Clock,
   ArrowLeft,
   Smartphone,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  FileImage,
+  Trash2,
+  LogIn,
+  UserPlus
 } from 'lucide-react';
 import { Language, UserProfile, PricingSettings } from '../types';
 import { doc, onSnapshot, setDoc, collection, addDoc } from 'firebase/firestore';
@@ -78,6 +83,25 @@ export const PremiumUpgradeModal: React.FC<PremiumUpgradeModalProps> = ({
   const [transferNote, setTransferNote] = useState('');
   const [bankSuccessCode, setBankSuccessCode] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Receipt Upload State
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [receiptFileName, setReceiptFileName] = useState<string>('');
+
+  const handleReceiptFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Dekont / ekran görüntüsü boyutu maksimum 5MB olabilir.');
+      return;
+    }
+    setReceiptFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setReceiptImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Receipt State
   const [receiptTxnId, setReceiptTxnId] = useState('');
@@ -301,6 +325,8 @@ export const PremiumUpgradeModal: React.FC<PremiumUpgradeModalProps> = ({
         plan: 'Pro Unlimited',
         billingType: selectedBilling,
         transferNote: transferNote.trim(),
+        receiptImage: receiptImage || null,
+        receiptFileName: receiptFileName || null,
         status: 'pending',
         createdAt: new Date().toISOString()
       });
@@ -459,26 +485,60 @@ export const PremiumUpgradeModal: React.FC<PremiumUpgradeModalProps> = ({
 
               {/* Action Button */}
               <div className="space-y-3 pt-2">
-                <button
-                  onClick={handleProceedToPayment}
-                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:via-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-900/50 transition-all flex items-center justify-center gap-2 group hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  {user ? (
-                    <>
-                      <Lock className="w-4 h-4 text-amber-300" />
-                      <span>
-                        Ödeme Aşamasına Geç ({pricing.currency}{currentPrice} {selectedBilling === 'yearly' ? 'Yıllık' : 'Aylık'})
-                      </span>
-                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-5 h-5" />
-                      <span>Devam Etmek İçin Ücretsiz Giriş Yap / Kayıt Ol</span>
-                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </>
-                  )}
-                </button>
+                {user ? (
+                  <button
+                    onClick={handleProceedToPayment}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:via-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-900/50 transition-all flex items-center justify-center gap-2 group hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Lock className="w-4 h-4 text-amber-300" />
+                    <span>
+                      Ödeme Aşamasına Geç ({pricing.currency}{currentPrice} {selectedBilling === 'yearly' ? 'Yıllık' : 'Aylık'})
+                    </span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/80 border border-purple-500/30 text-white space-y-3 shadow-xl">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300 shrink-0">
+                        <UserCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">Yükseltme İçin Hesap Seçin</h4>
+                        <p className="text-[11px] text-slate-300">
+                          Devam etmek için mevcut hesabınıza giriş yapın veya ücretsiz kayıt olun.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          if (onOpenAuth) onOpenAuth('login');
+                        }}
+                        className="w-full py-3 px-4 rounded-xl bg-purple-600/80 hover:bg-purple-600 border border-purple-400/30 text-white font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 group"
+                      >
+                        <LogIn className="w-4 h-4 text-purple-200" />
+                        <span>Giriş Yapın</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          if (onOpenAuth) onOpenAuth('register');
+                        }}
+                        className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-900/30 transition-all flex items-center justify-center gap-2 group"
+                      >
+                        <UserPlus className="w-4 h-4 text-slate-950" />
+                        <span>Ücretsiz Kayıt Olun</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <p className="text-[11px] text-center text-slate-500 flex items-center justify-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -764,6 +824,41 @@ export const PremiumUpgradeModal: React.FC<PremiumUpgradeModalProps> = ({
                           className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-white/10 text-white text-xs focus:outline-none focus:border-amber-500"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        Dekont / Ekran Görüntüsü Yükleyin (Görsel veya PDF)
+                      </label>
+                      {receiptImage ? (
+                        <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold truncate">
+                            <FileImage className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{receiptFileName || 'Dekont Ekran Görüntüsü Yüklendi'}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReceiptImage(null);
+                              setReceiptFileName('');
+                            }}
+                            className="text-rose-400 hover:text-rose-300 p-1 rounded-lg hover:bg-rose-500/10 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-950 border border-dashed border-white/20 hover:border-amber-500/50 text-slate-300 hover:text-white cursor-pointer transition-all text-xs font-semibold">
+                          <Upload className="w-4 h-4 text-amber-400" />
+                          <span>Dekont veya Ekran Görüntüsü Seçin (Maks 5MB)</span>
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            onChange={handleReceiptFileChange}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
                     </div>
                   </div>
 

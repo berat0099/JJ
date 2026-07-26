@@ -345,7 +345,10 @@ export default function App() {
           } catch (e) {
             console.error(e);
           }
-          addToast('success', 'Hoş Geldiniz!', `${newUser.name} olarak başarıyla giriş yaptınız.`);
+          setAuthModalOpen(false);
+          // Automatically re-open Premium upgrade modal if it was open or being accessed
+          setUpgradeModalOpen(true);
+          addToast('success', 'Hoş Geldiniz!', `${newUser.name} olarak başarıyla giriş yaptınız. Yükseltme işleminize devam edebilirsiniz.`);
         }}
       />
 

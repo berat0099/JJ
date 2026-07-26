@@ -37,7 +37,9 @@ import {
   Building2,
   Check,
   Clock,
-  AlertCircle
+  AlertCircle,
+  FileImage,
+  Eye
 } from 'lucide-react';
 import { AdminStats, Announcement, Language, UserProfile, PricingSettings } from '../types';
 import { mockAdminStats } from '../data/sampleData';
@@ -70,6 +72,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   const [bankTransfers, setBankTransfers] = useState<any[]>([]);
   const [cardTransactions, setCardTransactions] = useState<any[]>([]);
+  const [previewReceipt, setPreviewReceipt] = useState<{ image: string; fileName?: string; sender?: string } | null>(null);
 
   const [isUnlocked, setIsUnlocked] = useState(user?.role === 'admin');
   const [adminPin, setAdminPin] = useState('');
@@ -1015,6 +1018,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                         <th className="pb-2.5">Gönderen Adı</th>
                         <th className="pb-2.5">Sipariş Kodu</th>
                         <th className="pb-2.5">Banka & Tutar</th>
+                        <th className="pb-2.5">Dekont / Ekran Gör.</th>
                         <th className="pb-2.5">Tarih</th>
                         <th className="pb-2.5 text-right">İşlemler</th>
                       </tr>
@@ -1030,6 +1034,19 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             <td className="py-3">
                               <span className="font-extrabold text-emerald-400">{b.amount} ₺</span>
                               <span className="text-[10px] text-slate-400 block">{b.bank}</span>
+                            </td>
+                            <td className="py-3">
+                              {b.receiptImage ? (
+                                <button
+                                  onClick={() => setPreviewReceipt({ image: b.receiptImage, fileName: b.receiptFileName, sender: b.senderName })}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-[11px] inline-flex items-center gap-1 transition-colors"
+                                >
+                                  <FileImage className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Görüntüle</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-500 text-[11px] italic">Yüklenmedi</span>
+                              )}
                             </td>
                             <td className="py-3 text-slate-400 text-[11px]">
                               {b.createdAt ? new Date(b.createdAt).toLocaleString('tr-TR') : '-'}
@@ -1549,6 +1566,46 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             </div>
           )}
           </div>
+          </div>
+        )}
+
+        {/* Receipt Image Preview Modal */}
+        {previewReceipt && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <div className="relative max-w-xl w-full bg-slate-900 border border-white/20 rounded-3xl p-6 shadow-2xl space-y-4">
+              <button
+                onClick={() => setPreviewReceipt(null)}
+                className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <FileImage className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Yüklenen Dekont / Ekran Görüntüsü</h3>
+              </div>
+              {previewReceipt.sender && (
+                <p className="text-xs text-slate-300">Gönderen Adı: <strong className="text-amber-300">{previewReceipt.sender}</strong></p>
+              )}
+              <div className="max-h-[60vh] overflow-auto rounded-2xl border border-white/10 bg-slate-950 p-2 flex items-center justify-center">
+                {previewReceipt.image.startsWith('data:application/pdf') ? (
+                  <iframe src={previewReceipt.image} title="Dekont PDF" className="w-full h-96 rounded-xl" />
+                ) : (
+                  <img
+                    src={previewReceipt.image}
+                    alt="Uploaded Receipt"
+                    className="max-w-full h-auto max-h-[55vh] object-contain rounded-xl"
+                  />
+                )}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setPreviewReceipt(null)}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </motion.div>

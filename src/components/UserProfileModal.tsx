@@ -15,10 +15,12 @@ import {
   Zap,
   ExternalLink,
   Sparkles,
-  LogOut
+  LogOut,
+  CreditCard
 } from 'lucide-react';
 import { UserProfile, DownloadHistoryItem, FavoriteItem, Language } from '../types';
 import { translations } from '../data/translations';
+import { PaymentHistoryTable } from './PaymentHistoryTable';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -35,7 +37,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   lang,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'history' | 'favorites' | 'notifications' | 'api'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'history' | 'favorites' | 'payments' | 'notifications' | 'api'>('profile');
   const [copiedKey, setCopiedKey] = useState(false);
   const t = translations[lang];
 
@@ -170,6 +172,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('payments')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${
+              activeTab === 'payments'
+                ? 'bg-purple-600 text-white'
+                : 'text-slate-300 hover:bg-white/5'
+            }`}
+          >
+            <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+            <span>Ödeme Geçmişi</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('notifications')}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${
               activeTab === 'notifications'
@@ -295,6 +309,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 ))
               )}
             </div>
+          )}
+
+          {activeTab === 'payments' && (
+            <PaymentHistoryTable userEmail={user.email} />
           )}
 
           {activeTab === 'notifications' && (

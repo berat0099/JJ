@@ -36,6 +36,14 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   const [successMessage, setSuccessMessage] = useState('');
   const t = translations[lang];
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode || 'login');
+      setErrorMessage('');
+      setSuccessMessage('');
+    }
+  }, [isOpen, initialMode]);
+
   if (!isOpen) return null;
 
   const handleGoogleSignIn = async () => {
