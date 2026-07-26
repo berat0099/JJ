@@ -33,11 +33,14 @@ function getDefaultYtArgs(): string[] {
     '--add-header', 'Accept-Language: tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
   ];
 
-  const denoPath = '/root/.deno/bin/deno';
-  if (fs.existsSync(denoPath)) {
-    args.push('--js-runtimes', `deno:${denoPath}`);
-  } else {
-    args.push('--js-runtimes', 'node');
+  const denoPaths = [
+    '/root/.deno/bin/deno',
+    path.join(process.cwd(), 'bin', 'deno'),
+    path.join(process.cwd(), 'deno')
+  ];
+  const foundDeno = denoPaths.find(p => fs.existsSync(p));
+  if (foundDeno) {
+    args.push('--js-runtimes', `deno:${foundDeno}`);
   }
 
   const cookiesPath = path.join(process.cwd(), 'cookies.txt');
