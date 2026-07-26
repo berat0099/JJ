@@ -69,19 +69,45 @@ function buildFormatSelector(type: 'video' | 'audio', formatId?: string): string
   }
 
   if (!formatId || formatId === 'best' || formatId === 'undefined') {
-    return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+    return 'bestvideo+bestaudio/best';
   }
 
-  if (/^\d+p$/i.test(formatId) || formatId.toLowerCase() === '4k') {
-    const height = formatId.toLowerCase() === '4k' ? '2160' : formatId.replace(/\D/g, '');
-    return `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best`;
+  const clean = formatId.toLowerCase().trim();
+
+  if (clean === '4k' || clean === '2160p' || clean === '2160') {
+    return 'bestvideo[height<=2160]+bestaudio/bestvideo[height<=2160]/bestvideo+bestaudio/best';
   }
 
-  if (/^\d+$/.test(formatId)) {
-    return `${formatId}+bestaudio/bestvideo+bestaudio/best`;
+  if (clean === '2k' || clean === '1440p' || clean === '1440') {
+    return 'bestvideo[height<=1440]+bestaudio/bestvideo[height<=1440]/bestvideo+bestaudio/best';
   }
 
-  return 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best';
+  if (clean === '1080p' || clean === '1080' || clean === 'fhd') {
+    return 'bestvideo[height<=1080]+bestaudio/bestvideo[height<=1080]/bestvideo+bestaudio/best';
+  }
+
+  if (clean === '720p' || clean === '720' || clean === 'hd') {
+    return 'bestvideo[height<=720]+bestaudio/bestvideo[height<=720]/bestvideo+bestaudio/best';
+  }
+
+  if (clean === '480p' || clean === '480' || clean === 'sd') {
+    return 'bestvideo[height<=480]+bestaudio/bestvideo[height<=480]/bestvideo+bestaudio/best';
+  }
+
+  if (clean === '360p' || clean === '360') {
+    return 'bestvideo[height<=360]+bestaudio/bestvideo[height<=360]/bestvideo+bestaudio/best';
+  }
+
+  if (/^\d+p$/i.test(clean)) {
+    const height = clean.replace(/\D/g, '');
+    return `bestvideo[height<=${height}]+bestaudio/bestvideo[height<=${height}]/bestvideo+bestaudio/best`;
+  }
+
+  if (/^\d+$/.test(clean)) {
+    return `${clean}+bestaudio/bestvideo+bestaudio/best`;
+  }
+
+  return 'bestvideo+bestaudio/best';
 }
 
 function formatYtDlpErrorMessage(err: any): string {
@@ -433,7 +459,7 @@ async function startServer() {
                   bitrate: f.vbr ? `${(f.vbr / 1000).toFixed(1)} Mbps` : (f.tbr ? `${(f.tbr / 1000).toFixed(1)} Mbps` : 'Otomatik'),
                   hasAudio: true,
                   quality: h >= 2160 ? '4k' : h >= 1080 ? 'fhd' : h >= 720 ? 'hd' : 'sd',
-                  formatId: f.format_id,
+                  formatId: `${h}p`,
                   tbr: f.tbr || 0
                 });
               }
@@ -670,7 +696,6 @@ async function startServer() {
           const fallbackFormat = job.type === 'audio' ? 'ba/best' : 'bestvideo+bestaudio/best';
           const fallbackArgs = [
             ...getDefaultYtArgs(),
-            '--extractor-args', 'youtube:player_client=mweb,android',
             '--concurrent-fragments', '3',
             '--ffmpeg-location', '/usr/bin/ffmpeg',
             '-f', fallbackFormat,
